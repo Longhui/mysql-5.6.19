@@ -89,6 +89,7 @@ enum enum_sql_command {
   SQLCOM_SHOW_RELAYLOG_EVENTS,
   SQLCOM_GET_DIAGNOSTICS,
   SQLCOM_ALTER_USER,
+  SQLCOM_SHOW_SQL_STATS, SQLCOM_SHOW_TABLE_STATS, SQLCOM_SHOW_STATISTICS_STATUS,
 
   /*
     When a command is added here, be sure it's also added in mysqld.cc

@@ -116,6 +116,7 @@ When one supplies long data for a placeholder:
 #include "sql_analyse.h"
 #include "sql_rewrite.h"
 #include "transaction.h"                        // trans_rollback_implicit
+#include "sql_statistics.h"
 
 #include <algorithm>
 using std::max;
@@ -2804,6 +2805,7 @@ void mysqld_stmt_fetch(THD *thd, char *packet, uint packet_length)
 
   thd->stmt_arena= stmt;
   thd->set_n_backup_statement(stmt, &stmt_backup);
+  statistics_start_sql_statement(thd);
 
   cursor->fetch(num_rows);
 
@@ -3942,7 +3944,7 @@ bool Prepared_statement::execute(String *expanded_query, bool open_cursor)
   */
 
   thd->set_n_backup_statement(this, &stmt_backup);
-
+  statistics_start_sql_statement(thd);
   /*
     Change the current database (if needed).
 

@@ -35,6 +35,7 @@
                                                 // end_read_record
 #include "sql_optimizer.h"                      // remove_eq_conds
 #include "sql_resolver.h"                       // setup_order, fix_inner_refs
+#include "sql_statistics.h"
 
 /**
   Implement DELETE SQL word.
@@ -284,6 +285,7 @@ bool mysql_delete(THD *thd, TABLE_LIST *table_list, Item *conds,
                                            limit, false, need_sort, false);
     goto exit_without_my_ok;
   }
+  statistics_save_index(thd, table, select);
 
   if (options & OPTION_QUICK)
     (void) table->file->extra(HA_EXTRA_QUICK);

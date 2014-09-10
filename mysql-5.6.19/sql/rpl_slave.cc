@@ -59,6 +59,7 @@
 
 #include "rpl_tblmap.h"
 #include "debug_sync.h"
+#include "sql_statistics.h"
 
 using std::min;
 using std::max;
@@ -5500,6 +5501,7 @@ pthread_handler_t handle_slave_sql(void *arg)
 #endif
 
   thd = new THD; // note that contructor of THD uses DBUG_ !
+  thd->m_sql_info = statistics_create_sql_info(thd->charset()->number);
   thd->thread_stack = (char*)&thd; // remember where our stack is
   rli->info_thd= thd;
   

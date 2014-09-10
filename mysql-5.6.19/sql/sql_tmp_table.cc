@@ -22,6 +22,7 @@
 #include "opt_trace.h"
 #include "debug_sync.h"
 #include "filesort.h"   // filesort_free_buffers
+#include "sql_statistics.h"
 
 #include <algorithm>
 using std::max;
@@ -810,12 +811,14 @@ update_hidden:
 	(param->group_parts > table->file->max_key_parts() ||
 	 param->group_length > table->file->max_key_length()))
       using_unique_constraint= true;
+      INCREASE_DISK_TEMP_TABLE_CREATED(thd);
   }
   else
   {
     share->db_plugin= ha_lock_engine(0, heap_hton);
     table->file= get_new_handler(share, &table->mem_root,
                                  share->db_type());
+    INCREASE_MEM_TEMP_TABLE_CREATED(thd);
   }
   if (!table->file)
     goto err;

@@ -1569,6 +1569,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  STATS_AUTO_RECALC_SYM
 %token  STATS_PERSISTENT_SYM
 %token  STATS_SAMPLE_PAGES_SYM
+%token	STATS_SYM
 %token  STATUS_SYM
 %token  STDDEV_SAMP_SYM               /* SQL-2003-N */
 %token  STD_SYM
@@ -12711,6 +12712,14 @@ show_param:
             Lex->spname= $3;
             Lex->sql_command = SQLCOM_SHOW_CREATE_EVENT;
           }
+		| SQL_SYM STATS_SYM opt_order_clause opt_limit_clause
+		  {
+			Lex->sql_command = SQLCOM_SHOW_SQL_STATS;
+		  }
+		| TABLE_SYM STATS_SYM
+		  {
+			Lex->sql_command = SQLCOM_SHOW_TABLE_STATS;
+		  }
         ;
 
 show_engine_param:
