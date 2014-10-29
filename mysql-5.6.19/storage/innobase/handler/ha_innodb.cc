@@ -171,6 +171,7 @@ values */
 
 static ulong	innobase_fast_shutdown			= 1;
 static my_bool	innobase_file_format_check		= TRUE;
+static my_bool  innobase_use_xa_resume    = FALSE;
 #ifdef UNIV_LOG_ARCHIVE
 static my_bool	innobase_log_archive			= FALSE;
 static char*	innobase_log_arch_dir			= NULL;
@@ -850,6 +851,13 @@ innobase_xa_recover(
 	handlerton*	hton,		/*!< in: InnoDB handlerton */
 	XID*		xid_list,	/*!< in/out: prepared transactions */
 	uint		len);		/*!< in: number of slots in xid_list */
+
+static
+int
+innobase_xa_register(
+  handlerton *hton, 
+  THD *thd, 
+  XID *xid);
 /*******************************************************************//**
 This function is used to commit one X/Open XA distributed transaction
 which is in the prepared state
@@ -2820,6 +2828,7 @@ innobase_init(
 		innobase_release_temporary_latches;
 
 	innobase_hton->data = &innodb_api_cb;
+  innobase_hton->xa_register = innobase_xa_register;
 
 	ut_a(DATA_MYSQL_TRUE_VARCHAR == (ulint)MYSQL_TYPE_VARCHAR);
 
@@ -3123,6 +3132,8 @@ innobase_change_buffering_inited_ok:
 		}
 #endif /* defined(__WIN__) && !defined(_WIN64) */
 	}
+  srv_use_xa_resume = (ibool)innobase_use_xa_resume;
+  use_xa_resume     = (bool)srv_use_xa_resume;
 	srv_buf_pool_size = (ulint) innobase_buffer_pool_size;
 	srv_buf_pool_instances = (ulint) innobase_buffer_pool_instances;
 
@@ -3853,7 +3864,8 @@ innobase_close_connection(
 				"but transaction is active");
 	}
 
-	if (trx_is_started(trx) && log_warnings) {
+	if (!srv_use_xa_resume && trx_is_started(trx) && log_warnings &&
+    trx->state == TRX_STATE_PREPARED) {
 
 		sql_print_warning(
 			"MySQL is closing a connection that has an active "
@@ -3861,12 +3873,18 @@ innobase_close_connection(
 			"will roll back.",
 			trx->undo_no);
 	}
+  if ( !srv_use_xa_resume || trx->state != TRX_STATE_PREPARED)
+  {
+	  innobase_rollback_trx(trx);
 
-	innobase_rollback_trx(trx);
-
-	trx_free_for_mysql(trx);
-
-	DBUG_RETURN(0);
+	  trx_free_for_mysql(trx);
+    DBUG_RETURN(0);
+  }
+  else
+  {
+    sql_print_information("MySQL is closing a connection that has an active xa InnoDB transaction.");
+    DBUG_RETURN(-1);
+  }
 }
 
 /*****************************************************************//**
@@ -13635,6 +13653,36 @@ innobase_xa_recover(
 	return(trx_recover_for_mysql(xid_list, len));
 }
 
+static
+int
+innobase_xa_register(
+  handlerton *hton,
+  THD *thd,
+  XID *xid)
+{
+  DBUG_ASSERT(hton == innodb_hton_ptr);
+  trx_t *trx = thd_to_trx(thd);
+  if (trx)
+  {
+    trx_free_for_mysql(trx);
+  }
+  trx = trx_get_trx_by_xid(xid);
+  if (trx)
+  {
+    thd_to_trx(thd) = trx;
+    trx->mysql_thd = thd;
+    if (!srv_use_xa_resume)
+    {
+      ut_d(trx->in_mysql_trx_list = TRUE);
+      UT_LIST_ADD_FIRST(mysql_trx_list, trx_sys->mysql_trx_list, trx);
+    }
+    trans_register_ha(thd, TRUE, hton);
+    trx_register_for_2pc(trx);
+    return 0;
+  }
+  return 1;
+}
+
 /*******************************************************************//**
 This function is used to commit one X/Open XA distributed transaction
 which is in the prepared state
@@ -13654,7 +13702,14 @@ innobase_commit_by_xid(
 
 	if (trx) {
 		innobase_commit_low(trx);
-		trx_free_for_background(trx);
+    if (srv_use_xa_resume)
+    {
+      trx_free_for_mysql(trx);
+    }
+    else
+    {
+		  trx_free_for_background(trx);
+    }
 		return(XA_OK);
 	} else {
 		return(XAER_NOTA);
@@ -15746,6 +15801,11 @@ static MYSQL_SYSVAR_BOOL(file_format_check, innobase_file_format_check,
   "Whether to perform system file format check.",
   NULL, NULL, TRUE);
 
+static MYSQL_SYSVAR_BOOL(use_xa_resume, innobase_use_xa_resume,
+  PLUGIN_VAR_READONLY,
+  "Whether to use the improved xa transaction",
+  NULL, NULL, FALSE);
+
 /* If a new file format is introduced, the file format
 name needs to be updated accordingly. Please refer to
 file_format_name_map[] defined in trx0sys.cc for the next
@@ -16464,6 +16524,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(file_per_table),
   MYSQL_SYSVAR(file_format),
   MYSQL_SYSVAR(file_format_check),
+  MYSQL_SYSVAR(use_xa_resume),
   MYSQL_SYSVAR(file_format_max),
   MYSQL_SYSVAR(flush_log_at_timeout),
   MYSQL_SYSVAR(flush_log_at_trx_commit),

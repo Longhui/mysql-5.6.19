@@ -40,6 +40,7 @@ using std::list;
 
 #define FLAGSTR(V,F) ((V)&(F)?#F" ":"")
 
+#define GET_XA_LOG(buf,name) my_snprintf(buf,sizeof(buf),"%sxa_%s.log",mysql_real_data_home_ptr ? mysql_real_data_home_ptr : "", name)
 /**
   @defgroup Binary_Log Binary Log
   @{
@@ -78,6 +79,9 @@ static bool binlog_savepoint_rollback_can_release_mdl(handlerton *hton,
 static int binlog_commit(handlerton *hton, THD *thd, bool all);
 static int binlog_rollback(handlerton *hton, THD *thd, bool all);
 static int binlog_prepare(handlerton *hton, THD *thd, bool all);
+static int binlog_recover(handlerton *hton, XID *xid, uint len);
+static int binlog_commit_by_xid(handlerton *hton, XID *xid);
+static int binlog_rollback_by_xid(handlerton *hton, XID *xid);
 
 
 /**
@@ -908,6 +912,9 @@ static int binlog_init(void *p)
   binlog_hton->commit= binlog_commit;
   binlog_hton->rollback= binlog_rollback;
   binlog_hton->prepare= binlog_prepare;
+  binlog_hton->recover = binlog_recover;
+  binlog_hton->commit_by_xid = binlog_commit_by_xid;
+  binlog_hton->rollback_by_xid = binlog_rollback_by_xid;
   binlog_hton->flags= HTON_NOT_USER_SELECTABLE | HTON_HIDDEN;
   return 0;
 }
@@ -1308,6 +1315,79 @@ binlog_trx_cache_data::truncate(THD *thd, bool all)
   DBUG_RETURN(error);
 }
 
+static void xid_to_string(char *buf, XID *xid)
+{
+  char *s  = buf;
+  for (int i = 0; i < xid->bqual_length + xid->gtrid_length; i++)
+  {
+    char c = xid->data[i];
+    if ((c >= '0' && c <= '9') ||
+        (c >= 'A' && c <= 'Z') ||
+        (c >= 'a' && c <= 'z') ||
+        (c == '_'))
+    {
+      *s++ = c;
+    }
+    else
+    {
+      sprintf(s, "%x", xid->data[i]);
+      s += 2;
+    }
+  }
+}
+
+static int binlog_recover(handlerton *hton, XID *xid, uint len)
+{
+  return 0;
+}
+
+static int binlog_commit_by_xid(handlerton *hton, XID *xid)
+{
+  if (!opt_use_xa_tmplog)
+    return 0;
+
+  THD *thd = current_thd;
+  char name[XIDDATASIZE*2] = {0};
+  char xa_log_name[512] = {0};
+  int error = 0;
+  xid_to_string(name, xid);
+  GET_XA_LOG(xa_log_name, name);
+  FILE *fp = fopen(xa_log_name,"rb");
+  if (fp == NULL) return 1;
+  if (thd->binlog_setup_trx_data())
+  {
+    fclose(fp);
+    return 1;
+  }
+  binlog_cache_mngr *const cache_mngr = (binlog_cache_mngr *) thd_get_ha_data(thd, binlog_hton);
+  binlog_cache_data *cache_data = cache_mngr->get_binlog_cache_data(true);
+  IO_CACHE *io_cache = &cache_data->cache_log;
+  uchar read_buffer[1024] = {0};
+  while(!feof(fp))
+  {
+    int len = my_fread(fp,read_buffer,1024, MYF(0));
+    my_b_write(io_cache,read_buffer,len);
+  }
+  fclose(fp);
+  /** all prepare is done, so do commit only **/
+  if ((error = tc_log->commit(thd, TRUE)) != 0)
+  {
+    tc_log->rollback(thd, TRUE);
+  }
+  remove(xa_log_name);
+  return error;
+}
+
+static int binlog_rollback_by_xid(handlerton *hton, XID *xid)
+{
+  char xa_log_name[512] = {0};
+  char name[XIDDATASIZE*2] = {0};
+  xid_to_string(name, xid);
+  GET_XA_LOG(xa_log_name, name);
+  remove(xa_log_name);
+  return 0;
+}
+
 static int binlog_prepare(handlerton *hton, THD *thd, bool all)
 {
   /*
@@ -1316,6 +1396,22 @@ static int binlog_prepare(handlerton *hton, THD *thd, bool all)
     switch to 1pc.
     real work will be done in MYSQL_BIN_LOG::commit()
   */
+  if (opt_use_xa_tmplog
+      && thd->transaction.xid_state.xa_state == XA_IDLE
+      && thd->lex->xa_opt != XA_ONE_PHASE)
+  {
+    char name[XIDDATASIZE*2] = {0};
+    char xa_log_name[512] = {0};
+    xid_to_string(name, &thd->transaction.xid_state.xid);
+    GET_XA_LOG(xa_log_name, name);
+    FILE *fp = fopen(xa_log_name, "wb");
+    if (fp == NULL) return 1;
+    binlog_cache_mngr *const cache_mngr = (binlog_cache_mngr *)thd_get_ha_data(thd, binlog_hton);
+    binlog_cache_data *cache_data = cache_mngr->get_binlog_cache_data(true);
+    IO_CACHE *io_cache = &cache_data->cache_log;
+    my_b_copy_to_file(io_cache, fp);
+    fclose(fp);
+  }
   return 0;
 }
 

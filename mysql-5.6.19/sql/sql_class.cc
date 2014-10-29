@@ -918,6 +918,7 @@ THD::THD(bool enable_plugins)
    m_enable_plugins(enable_plugins),
    owned_gtid_set(global_sid_map),
    main_da(0, false),
+   exit_with_xa_prepare(false),
    m_stmt_da(&main_da)
 {
   ulong tmp;
@@ -1476,9 +1477,18 @@ void THD::cleanup(void)
   }
 #endif
   {
-    transaction.xid_state.xa_state= XA_NOTR;
+    exit_with_xa_prepare = (transaction.xid_state.xa_state == XA_PREPARED);
+    if (!use_xa_resume || !exit_with_xa_prepare)
+    {
+      transaction.xid_state.xa_state= XA_NOTR;
+    }
+    XID localxid = transaction.xid_state.xid;
     trans_rollback(this);
     xid_cache_delete(&transaction.xid_state);
+    if (use_xa_resume && exit_with_xa_prepare)
+    {
+      xid_cache_insert(&localxid, XA_PREPARED);
+    }
   }
 
   locked_tables_list.unlock_locked_tables(this);

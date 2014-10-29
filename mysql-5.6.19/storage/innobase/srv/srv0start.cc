@@ -3019,10 +3019,18 @@ innobase_shutdown_for_mysql(void)
 
 	ibuf_close();
 	log_shutdown();
-	lock_sys_close();
-	trx_sys_file_format_close();
-	trx_sys_close();
-
+  if (srv_use_xa_resume)
+  {
+    trx_sys_file_format_close();
+    trx_sys_close();
+    lock_sys_close();
+  }
+  else
+  {
+	  lock_sys_close();
+	  trx_sys_file_format_close();
+	  trx_sys_close();
+  }
 	/* We don't create these mutexes in RO mode because we don't create
 	the temp files that the cover. */
 	if (!srv_read_only_mode) {

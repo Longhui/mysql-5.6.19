@@ -323,7 +323,7 @@ bool trans_rollback(THD *thd)
   thd->transaction.all.dbug_unsafe_rollback_flags("all");
 #endif
 
-  if (trans_check_state(thd))
+  if (!(use_xa_resume && thd->exit_with_xa_prepare) && trans_check_state(thd))
     DBUG_RETURN(TRUE);
 
   thd->server_status&=
@@ -859,6 +859,31 @@ bool trans_xa_commit(THD *thd)
     {
       res= xa_trans_rolled_back(xs);
       ha_commit_or_rollback_by_xid(thd, thd->lex->xid, !res);
+      if (opt_use_xa_tmplog)
+      {
+        //ha_commit_trans(thd, TRUE);
+        MDL_request mdl_request;
+        mdl_request.init(MDL_key::COMMIT, "", "", MDL_INTENTION_EXCLUSIVE,MDL_TRANSACTION);
+        if (thd->mdl_context.acquire_lock(&mdl_request, thd->variables.lock_wait_timeout))
+        {
+          ha_rollback_trans(thd, TRUE);
+          my_error(ER_XAER_RMERR, MYF(0));
+        }
+        else
+        {
+          if (tc_log)
+            res= MY_TEST(tc_log->commit(thd, /* all */ true));
+          else
+            res= MY_TEST(ha_commit_low(thd, /* all */ true));
+          if (res)
+            my_error(ER_XAER_RMERR, MYF(0));
+        }
+        thd->variables.option_bits &= ~OPTION_BEGIN;
+        thd->transaction.all.reset_unsafe_rollback_flags();
+        thd->server_status&=
+          ~(SERVER_STATUS_IN_TRANS | SERVER_STATUS_IN_TRANS_READONLY);
+        DBUG_PRINT("info", ("clearing SERVER_STATUS_IN_TRANS"));
+      }
       xid_cache_delete(xs);
     }
     DBUG_RETURN(res);

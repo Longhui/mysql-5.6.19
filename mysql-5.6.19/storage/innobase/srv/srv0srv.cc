@@ -213,6 +213,9 @@ UNIV_INTERN const byte*	srv_latin1_ordering;
 
 /* use os/external memory allocator */
 UNIV_INTERN my_bool	srv_use_sys_malloc	= TRUE;
+
+/* use for xa patch */
+UNIV_INTERN ibool srv_use_xa_resume = FALSE;
 /* requested size in kilobytes */
 UNIV_INTERN ulint	srv_buf_pool_size	= ULINT_MAX;
 /* requested number of buffer pool instances */

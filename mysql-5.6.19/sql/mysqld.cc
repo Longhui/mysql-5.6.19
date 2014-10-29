@@ -383,7 +383,7 @@ LEX_STRING opt_init_connect, opt_init_slave;
 static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 /* Global variables */
-
+my_bool opt_use_xa_tmplog;
 bool opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log, opt_log_raw;
 ulonglong log_output_options;
@@ -5171,7 +5171,7 @@ static void test_lc_time_sz()
     {
       DBUG_PRINT("Wrong max day name(or month name) length for locale:",
                  ("%s", (*loc)->name));
-      DBUG_ASSERT(0);
+      //DBUG_ASSERT(0);
     }
   }
   DBUG_VOID_RETURN;

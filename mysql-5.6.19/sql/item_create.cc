@@ -2354,6 +2354,17 @@ protected:
   virtual ~Create_func_strcmp() {}
 };
 
+class Create_func_strjavahash : public Create_func_arg1
+{
+public:
+   virtual Item *create(THD *thd, Item *arg1);
+   
+   static Create_func_strjavahash s_singleton;
+
+protected:
+   Create_func_strjavahash() {}
+   virtual ~Create_func_strjavahash() {}
+};
 
 class Create_func_substr_index : public Create_func_arg3
 {
@@ -5100,6 +5111,12 @@ Create_func_strcmp::create(THD *thd, Item *arg1, Item *arg2)
   return new (thd->mem_root) Item_func_strcmp(arg1, arg2);
 }
 
+Create_func_strjavahash Create_func_strjavahash::s_singleton;
+ 
+Item* Create_func_strjavahash::create(THD *thd, Item *arg1)
+{
+   return new (thd->mem_root) Item_func_strjavahash(arg1);
+}
 
 Create_func_substr_index Create_func_substr_index::s_singleton;
 
@@ -5648,6 +5665,7 @@ static Native_func_registry func_array[] =
   { { C_STRING_WITH_LEN("SRID") }, GEOM_BUILDER(Create_func_srid)},
   { { C_STRING_WITH_LEN("STARTPOINT") }, GEOM_BUILDER(Create_func_startpoint)},
   { { C_STRING_WITH_LEN("STRCMP") }, BUILDER(Create_func_strcmp)},
+  { { C_STRING_WITH_LEN("STRJAVAHASH") }, BUILDER(Create_func_strjavahash)},
   { { C_STRING_WITH_LEN("STR_TO_DATE") }, BUILDER(Create_func_str_to_date)},
   { { C_STRING_WITH_LEN("ST_AREA") }, GEOM_BUILDER(Create_func_area)},
   { { C_STRING_WITH_LEN("ST_ASBINARY") }, GEOM_BUILDER(Create_func_as_wkb)},

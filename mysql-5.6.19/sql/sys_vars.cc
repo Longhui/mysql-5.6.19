@@ -4637,3 +4637,10 @@ static Sys_var_enum Sys_block_encryption_mode(
   "block_encryption_mode", "mode for AES_ENCRYPT/AES_DECRYPT",
   SESSION_VAR(my_aes_mode), CMD_LINE(REQUIRED_ARG),
   my_aes_opmode_names, DEFAULT(my_aes_128_ecb));
+
+static Sys_var_mybool Sys_use_xa_tmplog(
+  "use_xa_tmplog",
+  "use temp file to save the binlog info"
+  "when external xa trx prepared",
+  READ_ONLY GLOBAL_VAR(opt_use_xa_tmplog),
+  CMD_LINE(OPT_ARG), DEFAULT(FALSE));
