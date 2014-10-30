@@ -850,6 +850,7 @@ static uchar* acl_entry_get_key(acl_entry *entry, size_t *length,
 #define AUTH_PACKET_HEADER_SIZE_PROTO_40    5  
 
 static DYNAMIC_ARRAY acl_users, acl_dbs, acl_proxy_users;
+static DYNAMIC_ARRAY forbid_deleted_users;
 static MEM_ROOT global_acl_memory, memex;
 static bool initialized=0;
 static bool allow_all_hosts=1;
@@ -941,6 +942,93 @@ set_user_salt(ACL_USER *acl_user, const char *password, uint password_len)
   acl_user->password_expired= false;
   
   return result;
+}
+
+static void init_forbid_deleted_users(const char *user_list_string)
+{
+  if (user_list_string == NULL) return;
+
+  LEX_USER user;
+  char *buffer = my_strdup(user_list_string, 0);
+  char *ptr = buffer;
+  char *outer_ptr, *outer_result;
+  (void) my_init_dynamic_array(&forbid_deleted_users, sizeof(LEX_USER), 50, 10);
+  while((outer_result = strtok_r(ptr, ",", &outer_ptr)) != NULL)
+  {
+    char *start = outer_result;
+    char *end = start + strlen(outer_result);
+    char *pos = start;
+    while (pos != end)
+    {
+      if (*pos == '@')
+      {
+        break;
+      }
+      pos++;
+    }
+    if (end == pos) continue;
+    uint user_len = pos - start + 1;
+    uint host_len = end - pos;
+    char *u = (char *)my_malloc(user_len, 0);
+    memcpy(u, start, user_len - 1);
+    u[user_len - 1] = '\0';
+    char *h = (char *)my_malloc(host_len, 0);
+    memcpy(h, pos+1, host_len - 1);
+    h[host_len - 1] = '\0';
+    user.user.str = u; user.user.length = user_len;
+    user.host.str = h; user.host.length = host_len;
+    (void) push_dynamic(&forbid_deleted_users, (uchar*) &user);
+    ptr = NULL;
+  }
+  my_free(buffer);
+}
+
+static void free_forbid_deleted_users()
+{
+  for(uint i = 0; i < forbid_deleted_users.elements; i++)
+  {
+    LEX_USER *lex_user = dynamic_element(&forbid_deleted_users, i, LEX_USER*);
+    my_free(lex_user->user.str);
+    my_free(lex_user->host.str);
+  }
+  delete_dynamic(&forbid_deleted_users);
+}
+
+bool is_forbid_deleted_user(const char *user, const char *host)
+{
+  for(uint i = 0; i < forbid_deleted_users.elements; i++)
+  {
+    LEX_USER *lex_user = dynamic_element(&forbid_deleted_users, i, LEX_USER*);
+    if (lex_user != NULL)
+    {
+      if (strcmp(lex_user->user.str, user) == 0 && strcmp(lex_user->host.str, host) == 0)
+      {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool contain_forbid_deleted_user(const char *record)
+{
+  for (uint i = 0; i < forbid_deleted_users.elements; i++)
+  {
+    LEX_USER *lex_user = dynamic_element(&forbid_deleted_users, i, LEX_USER*);
+    if (lex_user != NULL)
+    {
+      if (strstr(record, lex_user->user.str) != NULL && strstr(record, lex_user->host.str) != NULL)
+      {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool is_forbid_users_empty()
+{
+  return forbid_deleted_users.elements == 0;
 }
 
 /*
@@ -1456,6 +1544,7 @@ void acl_free(bool end)
   delete_dynamic(&acl_dbs);
   delete_dynamic(&acl_wild_hosts);
   delete_dynamic(&acl_proxy_users);
+  free_forbid_deleted_users();
   my_hash_free(&acl_check_hosts);
   plugin_unlock(0, native_password_plugin);
   plugin_unlock(0, old_password_plugin);
@@ -5392,6 +5481,7 @@ my_bool grant_init()
   thd->store_globals();
   return_val=  grant_reload(thd);
   delete thd;
+  init_forbid_deleted_users(user_list_string);
   /* Remember that we don't have a THD */
   my_pthread_setspecific_ptr(THR_THD,  0);
   DBUG_RETURN(return_val);
@@ -7973,6 +8063,14 @@ bool mysql_drop_user(THD *thd, List <LEX_USER> &list)
       result= TRUE;
       continue;
     }  
+    /* the users in user_list_string not allow to be dropped */
+    if (is_forbid_deleted_user(user_name->user.str, user_name->host.str))
+    {
+      append_user(thd, &wrong_users, user_name);
+      result = TRUE;
+      continue;
+    }
+
     if (handle_grant_data(tables, 1, user_name, NULL) <= 0)
     {
       append_user(thd, &wrong_users, user_name, wrong_users.length() > 0, FALSE);

@@ -3731,6 +3731,12 @@ static bool fix_log(char** logname, const char* default_logname,
   mysql_mutex_lock(&LOCK_global_system_variables);
   return false;
 }
+
+static Sys_var_charptr Sys_user_list_string(
+  "user_list_string", "users can't be deleted or dropped",
+  PREALLOCATED READ_ONLY GLOBAL_VAR(user_list_string), CMD_LINE(REQUIRED_ARG),
+  IN_FS_CHARSET, DEFAULT("rdsadmin@localhost"), NO_MUTEX_GUARD, NOT_IN_BINLOG);
+
 static void reopen_general_log(char* name)
 {
   logger.get_log_file_handler()->close(0);
@@ -4637,3 +4643,9 @@ static Sys_var_enum Sys_block_encryption_mode(
   "block_encryption_mode", "mode for AES_ENCRYPT/AES_DECRYPT",
   SESSION_VAR(my_aes_mode), CMD_LINE(REQUIRED_ARG),
   my_aes_opmode_names, DEFAULT(my_aes_128_ecb));
+
+static Sys_var_ulong Sys_super_connections_after_max(
+  "super_connections_after_max",
+  "the number of connections who has the super private allow, when the connections is full",
+  GLOBAL_VAR(super_connections_after_max), NO_CMD_LINE,
+  VALID_RANGE(1, 100), DEFAULT(1), BLOCK_SIZE(1));
