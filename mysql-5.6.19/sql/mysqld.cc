@@ -547,7 +547,7 @@ ulong delayed_insert_errors,flush_time;
 ulong specialflag=0;
 ulong binlog_cache_use= 0, binlog_cache_disk_use= 0;
 ulong binlog_stmt_cache_use= 0, binlog_stmt_cache_disk_use= 0;
-ulong max_connections, max_connect_errors;
+ulong max_connections, max_connect_errors, super_connections_after_max;
 ulong rpl_stop_slave_timeout= LONG_TIMEOUT;
 my_bool log_bin_use_v1_row_events= 0;
 bool thread_cache_size_specified= false;
@@ -763,7 +763,7 @@ char *master_info_file;
 char *relay_log_info_file, *report_user, *report_password, *report_host;
 char *opt_relay_logname = 0, *opt_relaylog_index_name=0;
 char *opt_logname, *opt_slow_logname, *opt_bin_logname;
-
+char *user_list_string;
 /* Static variables */
 
 static volatile sig_atomic_t kill_in_progress;
@@ -5179,7 +5179,7 @@ static void test_lc_time_sz()
     {
       DBUG_PRINT("Wrong max day name(or month name) length for locale:",
                  ("%s", (*loc)->name));
-      DBUG_ASSERT(0);
+      //DBUG_ASSERT(0);
     }
   }
   DBUG_VOID_RETURN;
@@ -6119,7 +6119,7 @@ static void create_new_thread(THD *thd)
 
   mysql_mutex_lock(&LOCK_connection_count);
 
-  if (connection_count >= max_connections + 1 || abort_loop)
+  if (connection_count >= max_connections + super_connections_after_max || abort_loop)
   {
     mysql_mutex_unlock(&LOCK_connection_count);
 
@@ -8179,6 +8179,7 @@ static int mysql_init_variables(void)
   opt_skip_name_resolve= 0;
   opt_ignore_builtin_innodb= 0;
   opt_logname= opt_update_logname= opt_binlog_index_name= opt_slow_logname= 0;
+  user_list_string = 0;
   opt_tc_log_file= (char *)"tc.log";      // no hostname in tc_log file name !
   opt_secure_auth= 0;
   opt_secure_file_priv= NULL;

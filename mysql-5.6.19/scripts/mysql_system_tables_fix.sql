@@ -243,6 +243,14 @@ ALTER TABLE slow_log
   ADD COLUMN thread_id INTEGER NOT NULL AFTER sql_text;
 ALTER TABLE slow_log
   MODIFY thread_id BIGINT(21) UNSIGNED NOT NULL;
+ALTER TABLE slow_log
+  ADD logical_reads INTEGER DEFAULT 0 NOT NULL AFTER rows_examined;
+ALTER TABLE slow_log
+  MODIFY logical_reads INTEGER  NOT NULL;
+ALTER TABLE slow_log
+  ADD physical_reads INTEGER DEFAULT 0 NOT NULL AFTER logical_reads;
+ALTER TABLE slow_log
+  MODIFY physical_reads INTEGER NOT NULL;
 SET GLOBAL slow_query_log = @old_log_state;
 
 ALTER TABLE plugin

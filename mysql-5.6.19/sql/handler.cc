@@ -3179,6 +3179,11 @@ prev_insert_id(ulonglong nr, struct system_variables *variables)
 #define AUTO_INC_DEFAULT_NB_MAX_BITS 16
 #define AUTO_INC_DEFAULT_NB_MAX ((1 << AUTO_INC_DEFAULT_NB_MAX_BITS) - 1)
 
+bool handler::has_forbid_deleted_user(const char *record)
+{
+  return contain_forbid_deleted_user(record);
+}
+
 int handler::update_auto_increment()
 {
   ulonglong nr, nb_reserved_values;
@@ -3761,6 +3766,12 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_INNODB_FORCED_RECOVERY:
     textno= ER_INNODB_FORCED_RECOVERY;
+    break;
+  case HA_ERR_RDSADMIN_DELETED:
+    textno = ER_RDSADMIN_DELETED;
+    break;
+  case HA_ERR_USER_TABLE_DROPPED:
+    textno = ER_USER_TABLE_DROPPED;
     break;
   default:
     {

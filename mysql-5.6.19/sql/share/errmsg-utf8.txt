@@ -6538,6 +6538,12 @@ ER_INDEX_CORRUPT
 ER_UNDO_RECORD_TOO_BIG
   eng "Undo log record is too big."
 
+ER_RDSADMIN_DELETED
+  eng "users witch configured in user_list_string can not to be deleted or updated."
+
+ER_USER_TABLE_DROPPED
+  eng "table mysql.user can not to be truncated or dropped."
+
 ER_BINLOG_UNSAFE_INSERT_IGNORE_SELECT
   eng "INSERT IGNORE... SELECT is unsafe because the order in which rows are retrieved by the SELECT determines which (if any) rows are ignored. This order cannot be predicted and may differ on master and the slave."
 
