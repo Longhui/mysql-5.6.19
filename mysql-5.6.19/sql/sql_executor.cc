@@ -38,6 +38,7 @@
 #include "sql_tmp_table.h"
 #include "records.h"          // rr_sequential
 #include "opt_explain_format.h" // Explain_format_flags
+#include "sql_statistics.h"
 
 #include <algorithm>
 using std::max;
@@ -1764,6 +1765,7 @@ int safe_index_read(JOIN_TAB *tab)
                                             make_prev_keypart_map(tab->ref.key_parts),
                                             HA_READ_KEY_EXACT)))
     return report_handler_error(table, error);
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -1922,6 +1924,7 @@ join_read_system(JOIN_TAB *tab)
       empty_record(table);			// Make empty record
       return -1;
     }
+    INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
     store_record(table,record[1]);
   }
   else if (!table->status)			// Only happens with left join
@@ -1974,6 +1977,7 @@ join_read_const(JOIN_TAB *tab)
       }
       DBUG_RETURN(-1);
     }
+    INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
     store_record(table,record[1]);
   }
   else if (!(table->status & ~STATUS_NULL_ROW))	// Only happens with left join
@@ -2045,7 +2049,7 @@ join_read_key(JOIN_TAB *tab)
                                           HA_READ_KEY_EXACT);
     if (error && error != HA_ERR_KEY_NOT_FOUND && error != HA_ERR_END_OF_FILE)
       return report_handler_error(table, error);
-
+    INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
     if (! error)
     {
       table_ref->has_record= TRUE;
@@ -2212,6 +2216,7 @@ join_read_always_key(JOIN_TAB *tab)
       return report_handler_error(table, error);
     return -1; /* purecov: inspected */
   }
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -2243,6 +2248,7 @@ join_read_last_key(JOIN_TAB *tab)
       return report_handler_error(table, error);
     return -1; /* purecov: inspected */
   }
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -2294,6 +2300,7 @@ join_read_prev_same(READ_RECORD *info)
 
   if ((error= table->file->ha_index_prev(table->record[0])))
     return report_handler_error(table, error);
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   if (key_cmp_if_same(table, tab->ref.key_buff, tab->ref.key,
                       tab->ref.key_length))
   {
@@ -2535,6 +2542,7 @@ join_read_first(JOIN_TAB *tab)
       report_handler_error(table, error);
     return -1;
   }
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -2543,8 +2551,11 @@ static int
 join_read_next(READ_RECORD *info)
 {
   int error;
+  TABLE *table = info->table;
+  JOIN_TAB *tab = table->reginfo.join_tab;
   if ((error= info->table->file->ha_index_next(info->record)))
     return report_handler_error(info->table, error);
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -2569,6 +2580,7 @@ join_read_last(JOIN_TAB *tab)
   }
   if ((error= tab->table->file->ha_index_last(tab->table->record[0])))
     return report_handler_error(table, error);
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -2577,8 +2589,11 @@ static int
 join_read_prev(READ_RECORD *info)
 {
   int error;
+  TABLE *table = info->table;
+  JOIN_TAB *tab = table->reginfo.join_tab;
   if ((error= info->table->file->ha_index_prev(info->record)))
     return report_handler_error(info->table, error);
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -2599,6 +2614,7 @@ join_ft_read_first(JOIN_TAB *tab)
 
   if ((error= table->file->ft_read(table->record[0])))
     return report_handler_error(table, error);
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 
@@ -2606,8 +2622,11 @@ static int
 join_ft_read_next(READ_RECORD *info)
 {
   int error;
+  TABLE *table = info->table;
+  JOIN_TAB *tab = table->reginfo.join_tab;
   if ((error= info->table->file->ft_read(info->table->record[0])))
     return report_handler_error(info->table, error);
+  INCREASE_ROW_BYTE_READS(tab->join->thd, max_row_length(table, table->record[0]));
   return 0;
 }
 

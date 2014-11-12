@@ -60,6 +60,7 @@
 #include "lock.h"
 #include "global_threads.h"
 #include "mysqld.h"
+#include "sql_statistics.h"
 
 #include <mysql/psi/mysql_statement.h>
 
@@ -1049,6 +1050,7 @@ THD::THD(bool enable_plugins)
 #ifndef DBUG_OFF
   gis_debug= 0;
 #endif
+  m_sql_info = NULL;
 }
 
 
@@ -1638,7 +1640,10 @@ THD::~THD()
   if (rli_slave)
     rli_slave->cleanup_after_session();
 #endif
-
+  if (m_sql_info != NULL)
+  {
+    statistics_destory_sql_info(m_sql_info);
+  }
   free_root(&main_mem_root, MYF(0));
   DBUG_VOID_RETURN;
 }

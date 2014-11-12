@@ -34,6 +34,7 @@
                       // reset_host_errors
 #include "sql_acl.h"  // acl_getroot, NO_ACCESS, SUPER_ACL
 #include "sql_callback.h"
+#include "sql_statistics.h"
 
 #include <algorithm>
 
@@ -1040,6 +1041,7 @@ void do_handle_one_connection(THD *thd_arg)
   if (setup_connection_thread_globals(thd))
     return;
 
+  thd->m_sql_info = statistics_create_sql_info(thd->charset()->number);
   for (;;)
   {
 	bool rc;
@@ -1053,6 +1055,10 @@ void do_handle_one_connection(THD *thd_arg)
 
     while (thd_is_connection_alive(thd))
     {
+      if (thd->m_sql_info == NULL)
+        thd->m_sql_info = statistics_create_sql_info(thd->charset()->number);
+      else
+        statistics_reset_sql_info(thd->m_sql_info, thd->charset()->number);
       mysql_audit_release(thd);
       if (do_command(thd))
   break;

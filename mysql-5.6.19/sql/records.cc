@@ -28,6 +28,7 @@
 #include "opt_range.h"                          // SQL_SELECT
 #include "sql_class.h"                          // THD
 #include "sql_select.h"          // JOIN_TAB
+#include "sql_statistics.h"
 
 
 static int rr_quick(READ_RECORD *info);
@@ -315,7 +316,13 @@ err:
   DBUG_RETURN(true);
 } /* init_read_record */
 
-
+int row_length(READ_RECORD *info)
+{
+  int ret = 0;
+  if (info && info->table && info->record)
+    ret = max_row_length(info->table, info->record);
+  return ret;
+}
 
 void end_read_record(READ_RECORD *info)
 {                   /* free cache if used */
@@ -372,6 +379,7 @@ static int rr_quick(READ_RECORD *info)
       break;
     }
   }
+  INCREASE_ROW_BYTE_READS(info->thd, row_length(info));
   return tmp;
 }
 
@@ -395,6 +403,7 @@ static int rr_index_first(READ_RECORD *info)
   info->read_record= rr_index;
   if (tmp)
     tmp= rr_handle_error(info, tmp);
+  INCREASE_ROW_BYTE_READS(info->thd, row_length(info));
   return tmp;
 }
 
@@ -418,6 +427,7 @@ static int rr_index_last(READ_RECORD *info)
   info->read_record= rr_index_desc;
   if (tmp)
     tmp= rr_handle_error(info, tmp);
+  INCREASE_ROW_BYTE_READS(info->thd, row_length(info));
   return tmp;
 }
 
@@ -443,6 +453,7 @@ static int rr_index(READ_RECORD *info)
   int tmp= info->table->file->ha_index_next(info->record);
   if (tmp)
     tmp= rr_handle_error(info, tmp);
+  INCREASE_ROW_BYTE_READS(info->thd, row_length(info));
   return tmp;
 }
 
@@ -468,6 +479,7 @@ static int rr_index_desc(READ_RECORD *info)
   int tmp= info->table->file->ha_index_prev(info->record);
   if (tmp)
     tmp= rr_handle_error(info, tmp);
+  INCREASE_ROW_BYTE_READS(info->thd, row_length(info));
   return tmp;
 }
 
@@ -487,6 +499,7 @@ int rr_sequential(READ_RECORD *info)
       break;
     }
   }
+  INCREASE_ROW_BYTE_READS(info->thd, row_length(info));
   return tmp;
 }
 

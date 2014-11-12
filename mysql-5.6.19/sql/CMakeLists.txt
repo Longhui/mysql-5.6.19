@@ -160,6 +160,7 @@ SET(SQL_SHARED_SOURCES
   sql_update.cc
   sql_view.cc
   sql_iostat.cc
+  sql_statistics.cc
   strfunc.cc
   sys_vars.cc
   table.cc

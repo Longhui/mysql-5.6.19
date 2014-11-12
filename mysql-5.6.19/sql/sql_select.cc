@@ -44,6 +44,7 @@
 #include "sql_join_buffer.h"     // JOIN_CACHE
 #include "sql_optimizer.h"       // JOIN
 #include "sql_tmp_table.h"       // tmp tables
+#include "sql_statistics.h"
 
 #include <algorithm>
 using std::max;
@@ -1097,7 +1098,10 @@ mysql_execute_select(THD *thd, SELECT_LEX *select_lex, bool free_join)
     free_join= false;
   }
   else
+  {
+    statistics_save_index(join);
     join->exec();
+  }
 
 err:
   if (free_join)

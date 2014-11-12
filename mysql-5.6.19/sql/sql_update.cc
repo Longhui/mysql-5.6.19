@@ -46,6 +46,7 @@
 #include "sql_tmp_table.h"                      // tmp tables
 #include "sql_optimizer.h"                      // remove_eq_conds
 #include "sql_resolver.h"                       // setup_order, fix_inner_refs
+#include "sql_statistics.h"
 
 /**
    True if the table's input and output record buffers are comparable using
@@ -543,7 +544,7 @@ int mysql_update(THD *thd,
                                              used_key_is_modified);
     goto exit_without_my_ok;
   }
-
+  statistics_save_index(thd, table, select);
   if (used_key_is_modified || order)
   {
     /*

@@ -101,6 +101,7 @@
 #include "sql_analyse.h"
 #include "table_cache.h" // table_cache_manager
 #include "resource_profiler.h"
+#include "sql_statistics.h"
 
 #include <algorithm>
 using std::max;
@@ -458,6 +459,9 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_SHOW_CREATE_EVENT]= CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_PROFILES]=    CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_SHOW_PROFILE]=     CF_STATUS_COMMAND;
+  sql_command_flags[SQLCOM_SHOW_SQL_STATS]= CF_STATUS_COMMAND;
+  sql_command_flags[SQLCOM_SHOW_TABLE_STATS]= CF_STATUS_COMMAND;
+  sql_command_flags[SQLCOM_SHOW_STATISTICS_STATUS] = CF_STATUS_COMMAND;
   sql_command_flags[SQLCOM_BINLOG_BASE64_EVENT]= CF_STATUS_COMMAND |
                                                  CF_CAN_GENERATE_ROW_EVENTS;
 
@@ -1314,11 +1318,13 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
   case COM_STMT_EXECUTE:
   {
     mysqld_stmt_execute(thd, packet, packet_length);
+    statistics_end_sql_statement(thd);
     break;
   }
   case COM_STMT_FETCH:
   {
     mysqld_stmt_fetch(thd, packet, packet_length);
+    statistics_end_sql_statement(thd);
     break;
   }
   case COM_STMT_SEND_LONG_DATA:
@@ -2656,7 +2662,7 @@ mysql_execute_command(THD *thd)
   }
 
   start_trx_statistics(thd);
-
+  statistics_exclude_current_sql(thd);
   switch (lex->sql_command) {
 
   case SQLCOM_SHOW_STATUS:
@@ -5111,6 +5117,22 @@ create_sp_error:
     break;
   }
 #endif //NO_EMBEDDED_ACCESS_CHECKS
+  case SQLCOM_SHOW_SQL_STATS:
+  {
+    unit->set_limit(select_lex);
+    res = statistics_show_sql_stats(unit->select_limit_cnt, thd);
+    break;
+  }
+  case SQLCOM_SHOW_TABLE_STATS:
+  {
+    res = statistics_show_table_stats(thd);
+    break;
+  }
+  case SQLCOM_SHOW_STATISTICS_STATUS:
+  {
+    res = statistics_show_status(thd);
+    break;
+  }
   case SQLCOM_ANALYZE:
   case SQLCOM_CHECK:
   case SQLCOM_OPTIMIZE:
@@ -6430,7 +6452,11 @@ void mysql_parse(THD *thd, char *rawbuf, uint length,
             error= 1;
           }
           else
+          {
+            statistics_start_sql_statement(thd);
             error= mysql_execute_command(thd);
+            statistics_end_sql_statement(thd);
+          }
           if (error == 0 &&
               thd->variables.gtid_next.type == GTID_GROUP &&
               thd->owned_gtid.sidno != 0 &&

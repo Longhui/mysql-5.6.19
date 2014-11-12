@@ -43,6 +43,7 @@
 
 #include <my_bit.h>
 #include <list>
+#include "sql_statistics.h"
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
@@ -7336,6 +7337,7 @@ int handler::ha_write_row(uchar *buf)
   if (unlikely(error= binlog_log_row(table, 0, buf, log_func)))
     DBUG_RETURN(error); /* purecov: inspected */
 
+  INCREASE_ROW_BYTE_READS(current_thd, max_row_length(table, buf));
   DEBUG_SYNC_C("ha_write_row_end");
   DBUG_RETURN(0);
 }
@@ -7366,6 +7368,7 @@ int handler::ha_update_row(const uchar *old_data, uchar *new_data)
     return error;
   if (unlikely(error= binlog_log_row(table, old_data, new_data, log_func)))
     return error;
+  INCREASE_ROW_BYTE_READS(current_thd, max_row_length(table, new_data));
   return 0;
 }
 
@@ -7394,6 +7397,7 @@ int handler::ha_delete_row(const uchar *buf)
     return error;
   if (unlikely(error= binlog_log_row(table, buf, 0, log_func)))
     return error;
+  INCREASE_ROW_BYTE_READS(current_thd, max_row_length(table, buf));
   return 0;
 }
 

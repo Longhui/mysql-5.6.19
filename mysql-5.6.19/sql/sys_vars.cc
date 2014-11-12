@@ -59,6 +59,7 @@
 #include "sql_show.h"                           // opt_ignore_db_dirs
 #include "table_cache.h"                        // Table_cache_manager
 #include "my_aes.h" // my_aes_opmode_names
+#include "sql_statistics.h"
 
 #include "log_event.h"
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
@@ -4722,3 +4723,73 @@ static Sys_var_mybool Sys_use_xa_tmplog(
   "when external xa trx prepared",
   READ_ONLY GLOBAL_VAR(opt_use_xa_tmplog),
   CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static Sys_var_ulong Sys_statistics_max_sql_size(
+      "statistics_max_sql_size",
+      "The max size of the sql, if the size greater than this value "
+      "this sql will not to be statistics",
+      READ_ONLY GLOBAL_VAR(statistics_max_sql_size), CMD_LINE(REQUIRED_ARG),
+      VALID_RANGE(0, 10240L), DEFAULT(1024), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_statistics_expire_duration(
+      "statistics_expire_duration",
+      "The stats info stored in mysql.sql_stats and mysql.table_stats duration "
+      "out of this time, the expire info will be deleted, unit day",
+      GLOBAL_VAR(statistics_expire_duration), CMD_LINE(REQUIRED_ARG),
+      VALID_RANGE(1, LONG_MAX), DEFAULT(3), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_statistics_max_sql_count(
+      "statistics_max_sql_count",
+      "The max count of the sql, when the count of sql reach this size "
+      "the new sql will be discard or replace another",
+      GLOBAL_VAR(statistics_max_sql_count), CMD_LINE(REQUIRED_ARG),
+      VALID_RANGE(0, MAX_SQL_COUNT), DEFAULT(100), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_statistics_output_cycle(
+      "statistics_output_cycle",
+      "The cycle when output the information into the tables "
+      "default 1 hour",
+      GLOBAL_VAR(statistics_output_cycle), CMD_LINE(REQUIRED_ARG),
+      VALID_RANGE(1, LONG_MAX), DEFAULT(1), BLOCK_SIZE(1));
+
+static Sys_var_mybool Sys_statistics_output_now(
+      "statistics_output_now",
+      "output the statistics info immediately "
+      "do not wait for the output cycle",
+      GLOBAL_VAR(statistics_output_now),
+      CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static Sys_var_mybool Sys_statistics_shutdown_fast(
+      "statistics_shutdown_fast",
+      "shutdown fast, do not output the statistics infos in memory",
+      GLOBAL_VAR(statistics_shutdown_fast),
+      CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static Sys_var_mybool Sys_statistics_plugin_status(
+  "statistics_plugin_status",
+  "statistics plugin switch, ON/OFF",
+  GLOBAL_VAR(statistics_plugin_status),
+  CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
+static bool update_exclude_db(sys_var *self, THD *thd, enum_var_type type)
+{
+  return update_exclude_db_list();
+}
+
+static Sys_var_charptr Sys_statistics_exclude_db(
+      "statistics_exclude_db", "exclude database list, separate by ';'",
+      GLOBAL_VAR(statistics_exclude_db), CMD_LINE(REQUIRED_ARG),
+      IN_FS_CHARSET, DEFAULT("mysql;performance_schema;information_schema"), 
+      NO_MUTEX_GUARD, NOT_IN_BINLOG,0, ON_UPDATE(update_exclude_db));
+
+static bool update_exclude_sql(sys_var *self, THD *thd, enum_var_type type)
+{
+  return update_exclude_sql_list();
+}
+
+static Sys_var_charptr Sys_statistics_exclude_sql(
+  "statistics_exclude_sql", "exclude sql list, separate by ';'",
+  GLOBAL_VAR(statistics_exclude_sql), CMD_LINE(REQUIRED_ARG),
+  IN_FS_CHARSET, DEFAULT("SET;SHOW"), 
+  NO_MUTEX_GUARD, NOT_IN_BINLOG,0, ON_UPDATE(update_exclude_sql));
+

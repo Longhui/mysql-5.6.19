@@ -33,6 +33,7 @@
 #include "sql_select.h"                // JOIN
 #include "sql_optimizer.h"             // JOIN
 #include <mysql/psi/mysql_statement.h>
+#include "sql_statistics.h"
 
 static int lex_one_token(void *arg, void *yythd);
 
@@ -910,6 +911,7 @@ int MYSQLlex(void *arg, void *yythd)
 {
   THD *thd= (THD *)yythd;
   Lex_input_stream *lip= & thd->m_parser_state->m_lip;
+  SQLInfo *sql_info = thd->m_sql_info;
   YYSTYPE *yylval=(YYSTYPE*) arg;
   int token;
 
@@ -924,6 +926,7 @@ int MYSQLlex(void *arg, void *yythd)
     *yylval= *(lip->lookahead_yylval);
     lip->lookahead_yylval= NULL;
     lip->m_digest_psi= MYSQL_ADD_TOKEN(lip->m_digest_psi, token, yylval);
+    statistics_add_token(sql_info, token, yylval);
     return token;
   }
 
@@ -943,10 +946,12 @@ int MYSQLlex(void *arg, void *yythd)
     case CUBE_SYM:
       lip->m_digest_psi= MYSQL_ADD_TOKEN(lip->m_digest_psi, WITH_CUBE_SYM,
                                          yylval);
+      statistics_add_token(sql_info, token, yylval);
       return WITH_CUBE_SYM;
     case ROLLUP_SYM:
       lip->m_digest_psi= MYSQL_ADD_TOKEN(lip->m_digest_psi, WITH_ROLLUP_SYM,
                                          yylval);
+      statistics_add_token(sql_info, token, yylval);
       return WITH_ROLLUP_SYM;
     default:
       /*
@@ -956,6 +961,7 @@ int MYSQLlex(void *arg, void *yythd)
       lip->yylval= NULL;
       lip->lookahead_token= token;
       lip->m_digest_psi= MYSQL_ADD_TOKEN(lip->m_digest_psi, WITH, yylval);
+      statistics_add_token(sql_info, token, yylval);
       return WITH;
     }
     break;
@@ -964,6 +970,7 @@ int MYSQLlex(void *arg, void *yythd)
   }
 
   lip->m_digest_psi= MYSQL_ADD_TOKEN(lip->m_digest_psi, token, yylval);
+  statistics_add_token(sql_info, token, yylval);
   return token;
 }
 
