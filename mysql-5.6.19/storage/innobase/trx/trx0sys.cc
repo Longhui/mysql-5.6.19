@@ -1226,7 +1226,10 @@ trx_sys_close(void)
 	ut_a(UT_LIST_GET_LEN(trx_sys->view_list) == 0);
 	ut_a(UT_LIST_GET_LEN(trx_sys->ro_trx_list) == 0);
 	ut_a(UT_LIST_GET_LEN(trx_sys->rw_trx_list) == 0);
-	ut_a(UT_LIST_GET_LEN(trx_sys->mysql_trx_list) == 0);
+  if (trx_sys->n_prepared_trx)
+  {
+	  ut_a(UT_LIST_GET_LEN(trx_sys->mysql_trx_list) == 0);
+  }
 
 	mutex_exit(&trx_sys->mutex);
 

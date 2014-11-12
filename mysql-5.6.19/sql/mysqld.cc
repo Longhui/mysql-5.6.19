@@ -389,6 +389,8 @@ ulong slow_query_type;
 ulong long_query_io_ulong;
 my_bool opt_slow_io_log;
 
+my_bool opt_use_xa_tmplog;
+
 bool opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log, opt_log_raw;
 my_bool opt_use_profile_limitted, opt_use_profile_repl;

@@ -4715,3 +4715,10 @@ static Sys_var_ulong Sys_super_connections_after_max(
   "the number of connections who has the super private allow, when the connections is full",
   GLOBAL_VAR(super_connections_after_max), NO_CMD_LINE,
   VALID_RANGE(1, 100), DEFAULT(1), BLOCK_SIZE(1));
+
+static Sys_var_mybool Sys_use_xa_tmplog(
+  "use_xa_tmplog",
+  "use temp file to save the binlog info"
+  "when external xa trx prepared",
+  READ_ONLY GLOBAL_VAR(opt_use_xa_tmplog),
+  CMD_LINE(OPT_ARG), DEFAULT(FALSE));

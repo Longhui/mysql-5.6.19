@@ -3125,6 +3125,25 @@ my_decimal *Item_func_min_max::val_decimal(my_decimal *dec)
   return res;
 }
 
+longlong Item_func_strjavahash::val_int()
+{
+  DBUG_ASSERT(fixed == 1);
+  String *res=args[0]->val_str(&value);
+  if (!res)
+  {
+    null_value=1;
+    return 0; /* purecov: inspected */
+  }
+  null_value=0;
+  int hash = 0;
+  int len = (int) res->length();
+  uint i;
+  if(len%2 == 1)
+    return 0;
+  for (i = 0; i < len; i++)
+    hash = (int)(31*hash + (uchar)(*res)[i]*256+(uchar)(*res)[++i]);
+  return hash;
+}
 
 longlong Item_func_length::val_int()
 {

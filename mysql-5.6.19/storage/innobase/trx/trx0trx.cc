@@ -392,6 +392,11 @@ trx_list_rw_insert_ordered(
 		}
 	} else {
 		UT_LIST_ADD_LAST(trx_list, trx_sys->rw_trx_list, trx);
+    if (srv_use_xa_resume && trx->state == TRX_STATE_PREPARED)
+    {
+      ut_d(trx->in_mysql_trx_list = TRUE);
+      UT_LIST_ADD_LAST(mysql_trx_list, trx_sys->mysql_trx_list, trx);
+    }
 	}
 
 #ifdef UNIV_DEBUG
@@ -2153,7 +2158,7 @@ trx_get_trx_by_xid_low(
 		of gtrid_length+bqual_length bytes should be
 		the same */
 
-		if (trx->is_recovered
+		if ((srv_use_xa_resume || trx->is_recovered)
 		    && trx_state_eq(trx, TRX_STATE_PREPARED)
 		    && xid->gtrid_length == trx->xid.gtrid_length
 		    && xid->bqual_length == trx->xid.bqual_length

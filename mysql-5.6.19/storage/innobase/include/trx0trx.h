@@ -42,6 +42,7 @@ Created 3/26/1996 Heikki Tuuri
 
 /** Dummy session used currently in MySQL interface */
 extern sess_t*	trx_dummy_sess;
+extern ibool srv_use_xa_resume;
 
 /********************************************************************//**
 Releases the search latch if trx has reserved it. */

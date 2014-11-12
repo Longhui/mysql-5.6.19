@@ -85,6 +85,8 @@ ulong total_ha_2pc= 0;
 /* size of savepoint storage area (see ha_init) */
 ulong savepoint_alloc_size= 0;
 
+bool use_xa_resume = false;
+
 static const LEX_STRING sys_table_aliases[]=
 {
   { C_STRING_WITH_LEN("INNOBASE") },  { C_STRING_WITH_LEN("INNODB") },
@@ -1547,7 +1549,7 @@ int ha_rollback_low(THD *thd, bool all)
   Ha_trx_info *ha_info= trans->ha_list, *ha_info_next;
   int error= 0;
 
-  if (ha_info)
+  if (ha_info && (!use_xa_resume || !thd->exit_with_xa_prepare))
   {
     /* Close all cursors that can not survive ROLLBACK */
     if (all)                          /* not a statement commit */
@@ -1674,8 +1676,11 @@ static my_bool xacommit_handlerton(THD *unused1, plugin_ref plugin,
   handlerton *hton= plugin_data(plugin, handlerton *);
   if (hton->state == SHOW_OPTION_YES && hton->recover)
   {
-    hton->commit_by_xid(hton, ((struct xahton_st *)arg)->xid);
-    ((struct xahton_st *)arg)->result= 0;
+    if (!opt_use_xa_tmplog || hton->db_type != DB_TYPE_INNODB)
+    {
+      hton->commit_by_xid(hton, ((struct xahton_st *)arg)->xid);
+      ((struct xahton_st *)arg)->result= 0;
+    }
   }
   return FALSE;
 }
@@ -1692,6 +1697,18 @@ static my_bool xarollback_handlerton(THD *unused1, plugin_ref plugin,
   return FALSE;
 }
 
+static my_bool xaregister_handlerton(THD *unused1, plugin_ref plugin,
+                                    void *arg)
+{
+  handlerton *hton= plugin_data(plugin, handlerton *);
+  struct xahton_st *xaop = (struct xahton_st *)arg;
+  if (hton->xa_register)
+  {
+    current_thd->variables.option_bits |= OPTION_BEGIN;
+    hton->xa_register(hton, current_thd, xaop->xid);
+  }
+  return FALSE;
+}
 
 int ha_commit_or_rollback_by_xid(THD *thd, XID *xid, bool commit)
 {
@@ -1699,6 +1716,10 @@ int ha_commit_or_rollback_by_xid(THD *thd, XID *xid, bool commit)
   xaop.xid= xid;
   xaop.result= 1;
 
+  if (opt_use_xa_tmplog && commit)
+  {
+    plugin_foreach(NULL, xaregister_handlerton, MYSQL_STORAGE_ENGINE_PLUGIN, &xaop);
+  }
   plugin_foreach(NULL, commit ? xacommit_handlerton : xarollback_handlerton,
                  MYSQL_STORAGE_ENGINE_PLUGIN, &xaop);
 

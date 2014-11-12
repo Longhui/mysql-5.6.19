@@ -2083,6 +2083,8 @@ public:
   /* Slave applier execution context */
   Relay_log_info* rli_slave;
 
+  bool exit_with_xa_prepare;
+
   void reset_for_next_command();
   /*
     Constant for THD::where initialization in the beginning of every query.

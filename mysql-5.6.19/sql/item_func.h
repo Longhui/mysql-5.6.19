@@ -1053,6 +1053,15 @@ public:
   enum_field_types field_type() const { return args[0]->field_type(); }
 };
 
+class Item_func_strjavahash :public Item_int_func
+{
+  String value;
+public:
+  Item_func_strjavahash(Item *a) :Item_int_func(a) {}
+  longlong val_int();
+  const char *func_name() const { return "strjavahash"; }
+  void fix_length_and_dec() { max_length=10; }
+};
 
 class Item_func_length :public Item_int_func
 {

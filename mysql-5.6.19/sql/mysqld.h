@@ -99,6 +99,7 @@ extern bool opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
 extern my_bool opt_log, opt_slow_log, opt_slow_io_log, opt_log_raw, opt_use_profile_limitted, opt_use_profile_repl;
 extern uint opt_profiler_record;
+extern my_bool opt_use_xa_tmplog;
 extern my_bool opt_backup_history_log;
 extern my_bool opt_backup_progress_log;
 extern ulonglong log_output_options;

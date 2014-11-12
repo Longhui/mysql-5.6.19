@@ -511,6 +511,8 @@ namespace AQP {
   class Join_plan;
 };
 
+extern bool use_xa_resume;
+
 /**
   struct xid_t is binary compatible with the XID structure as
   in the X/Open CAE Specification, Distributed Transaction Processing:
@@ -886,6 +888,7 @@ struct handlerton
    int (*fill_is_table)(handlerton *hton, THD *thd, TABLE_LIST *tables, 
                         class Item *cond, 
                         enum enum_schema_tables);
+   int (*xa_register)(handlerton *hton, THD *thd, XID *xid);
    uint32 flags;                                /* global handler flags */
    /*
       Those handlerton functions below are properly initialized at handler
