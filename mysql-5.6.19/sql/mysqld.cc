@@ -107,6 +107,7 @@
 #include "sp_rcontext.h"
 #include "sp_cache.h"
 #include "sql_reload.h"  // reload_acl_and_cache
+#include "sql_iostat.h"
 
 #ifdef HAVE_POLL_H
 #include <poll.h>
@@ -383,6 +384,9 @@ LEX_STRING opt_init_connect, opt_init_slave;
 static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 /* Global variables */
+ulong slow_query_type;
+ulong long_query_io_ulong;
+my_bool opt_slow_io_log;
 
 bool opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log, opt_log_raw;
@@ -3194,7 +3198,7 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
       sql_print_information("Got signal %d to shutdown mysqld",sig);
 #endif
       /* switch to the old log message processing */
-      logger.set_handlers(LOG_FILE, opt_slow_log ? LOG_FILE:LOG_NONE,
+      logger.set_handlers(LOG_FILE, (opt_slow_log || opt_slow_io_log) ? LOG_FILE:LOG_NONE,
                           opt_log ? LOG_FILE:LOG_NONE);
       DBUG_PRINT("info",("Got signal: %d  abort_loop: %d",sig,abort_loop));
       if (!abort_loop)
@@ -3232,13 +3236,13 @@ pthread_handler_t signal_hand(void *arg __attribute__((unused)))
       if (log_output_options & LOG_NONE)
       {
         logger.set_handlers(LOG_FILE,
-                            opt_slow_log ? LOG_TABLE : LOG_NONE,
+                            (opt_slow_log || opt_slow_io_log) ? LOG_TABLE : LOG_NONE,
                             opt_log ? LOG_TABLE : LOG_NONE);
       }
       else
       {
         logger.set_handlers(LOG_FILE,
-                            opt_slow_log ? log_output_options : LOG_NONE,
+                            (opt_slow_log || opt_slow_io_log) ? log_output_options : LOG_NONE,
                             opt_log ? log_output_options : LOG_NONE);
       }
       break;
@@ -3852,6 +3856,10 @@ int init_common_variables()
     return 1;
   set_server_version();
 
+  opt_slow_log |= (slow_query_type & 0x0001);
+  opt_slow_io_log = (slow_query_type & 0x0002) >> 1;
+  slow_query_type |= opt_slow_log;
+  set_io_stat_flag(&opt_slow_io_log);
 #ifndef EMBEDDED_LIBRARY
   if (opt_help && !opt_verbose)
     unireg_abort(0);
@@ -4923,11 +4931,11 @@ a file name for --log-bin-index option", opt_binlog_index_name);
       /* purecov: end */
     }
 
-    logger.set_handlers(LOG_FILE, opt_slow_log ? log_output_options:LOG_NONE,
+    logger.set_handlers(LOG_FILE, (opt_slow_log || opt_slow_io_log) ? log_output_options:LOG_NONE,
                         opt_log ? log_output_options:LOG_NONE);
   }
 #else
-  logger.set_handlers(LOG_FILE, opt_slow_log ? LOG_FILE:LOG_NONE,
+  logger.set_handlers(LOG_FILE, (opt_slow_log || opt_slow_io_log) ? LOG_FILE:LOG_NONE,
                       opt_log ? LOG_FILE:LOG_NONE);
 #endif
 

@@ -959,6 +959,7 @@ struct handlerton
                                     const char *table_name,
                                     bool is_sql_layer_system_table);
 
+  void (*io_stat_ptr)(uint stat_type);
    uint32 license; /* Flag for Engine License */
    void *data; /* Location for engines to keep personal structures */
 };

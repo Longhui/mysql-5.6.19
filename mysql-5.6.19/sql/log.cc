@@ -291,7 +291,7 @@ bool LOGGER::is_log_table_enabled(uint log_table_type)
 {
   switch (log_table_type) {
   case QUERY_LOG_SLOW:
-    return (table_log_handler != NULL) && opt_slow_log;
+    return (table_log_handler != NULL) && (opt_slow_log | opt_slow_io_log);
   case QUERY_LOG_GENERAL:
     return (table_log_handler != NULL) && opt_log ;
   default:
@@ -631,6 +631,12 @@ bool Log_to_csv_event_handler::
     /* rows_examined */
     if (table->field[SQLT_FIELD_ROWS_EXAMINED]->store((longlong) thd->get_examined_row_count(), TRUE))
       goto err;
+    /* logical_reads */
+    if (table->field[SQLT_FIELD_LOGICAL_READS]->store((longlong) thd->get_logical_reads(), TRUE))
+      goto err;
+    /* physical_reads */
+    if (table->field[SQLT_FIELD_PHYSICAL_READS]->store((longlong) thd->get_physical_reads(), TRUE))
+      goto err;
   }
   else
   {
@@ -638,6 +644,8 @@ bool Log_to_csv_event_handler::
     table->field[SQLT_FIELD_LOCK_TIME]->set_null();
     table->field[SQLT_FIELD_ROWS_SENT]->set_null();
     table->field[SQLT_FIELD_ROWS_EXAMINED]->set_null();
+    table->field[SQLT_FIELD_LOGICAL_READS]->set_null();
+    table->field[SQLT_FIELD_PHYSICAL_READS]->set_null();
   }
   /* fill database field */
   if (thd->db)
@@ -818,7 +826,7 @@ bool Log_to_file_event_handler::init()
 {
   if (!is_initialized)
   {
-    if (opt_slow_log)
+    if (opt_slow_log || opt_slow_io_log)
       mysql_slow_log.open_slow_log(opt_slow_logname);
 
     if (opt_log)
@@ -842,7 +850,7 @@ void Log_to_file_event_handler::flush()
   /* reopen log files */
   if (opt_log)
     mysql_log.reopen_file();
-  if (opt_slow_log)
+  if (opt_slow_log || opt_slow_io_log)
     mysql_slow_log.reopen_file();
 }
 
@@ -972,7 +980,7 @@ bool LOGGER::flush_slow_log()
   logger.lock_exclusive();
 
   /* Reopen slow log file */
-  if (opt_slow_log)
+  if (opt_slow_log || opt_slow_io_log)
     file_log_handler->get_mysql_slow_log()->reopen_file();
 
   /* End of log flush */
@@ -1046,7 +1054,7 @@ bool LOGGER::slow_log_print(THD *thd, const char *query, uint query_length)
       return 0;
 
     lock_shared();
-    if (!opt_slow_log)
+    if (!opt_slow_log && !opt_slow_io_log)
     {
       unlock();
       return 0;
@@ -1230,7 +1238,7 @@ bool LOGGER::activate_log_handler(THD* thd, uint log_type)
   lock_exclusive();
   switch (log_type) {
   case QUERY_LOG_SLOW:
-    if (!opt_slow_log)
+    if (!opt_slow_log || !opt_slow_io_log)
     {
       file_log= file_log_handler->get_mysql_slow_log();
 
@@ -1244,7 +1252,8 @@ bool LOGGER::activate_log_handler(THD* thd, uint log_type)
       else
       {
         init_slow_log(log_output_options);
-        opt_slow_log= TRUE;
+        opt_slow_log= slow_query_type & 0x0001;
+        opt_slow_io_log = (slow_query_type & 0x0002) >> 1;
       }
     }
     break;
@@ -1277,16 +1286,18 @@ bool LOGGER::activate_log_handler(THD* thd, uint log_type)
 
 void LOGGER::deactivate_log_handler(THD *thd, uint log_type)
 {
-  my_bool *tmp_opt= 0;
+  my_bool *tmp_opt= 0, *tmp_opt_io = 0;
   MYSQL_LOG *file_log= NULL;
 
   switch (log_type) {
   case QUERY_LOG_SLOW:
     tmp_opt= &opt_slow_log;
+    tmp_opt_io = &opt_slow_io_log;
     file_log= file_log_handler->get_mysql_slow_log();
     break;
   case QUERY_LOG_GENERAL:
     tmp_opt= &opt_log;
+    tmp_opt_io = &opt_slow_io_log;
     file_log= file_log_handler->get_mysql_log();
     break;
   default:
@@ -1299,6 +1310,7 @@ void LOGGER::deactivate_log_handler(THD *thd, uint log_type)
   lock_exclusive();
   file_log->close(0);
   *tmp_opt= FALSE;
+  *tmp_opt_io = FALSE;
   unlock();
 }
 
@@ -1920,6 +1932,7 @@ bool MYSQL_QUERY_LOG::write(THD *thd, time_t current_time,
     char query_time_buff[22+7], lock_time_buff[22+7];
     uint buff_len;
     end= buff;
+    ulong logical_reads = 0, physical_reads = 0;
 
     if (!(specialflag & SPECIAL_SHORT_LOG_FORMAT))
     {
@@ -1945,14 +1958,28 @@ bool MYSQL_QUERY_LOG::write(THD *thd, time_t current_time,
         tmp_errno= errno;
     }
     /* For slow query log */
-    sprintf(query_time_buff, "%.6f", ulonglong2double(query_utime)/1000000.0);
+    if (opt_slow_io_log)
+    {
+      logical_reads = thd->get_logical_reads();
+      physical_reads = thd->get_physical_reads();
+    }
+    if (opt_slow_log)
+    {
+      sprintf(query_time_buff, "%.6f", ulonglong2double(query_utime)/1000000.0);
+    }
+    else
+    {
+      sprintf(query_time_buff, "%d", 0);
+    }
     sprintf(lock_time_buff,  "%.6f", ulonglong2double(lock_utime)/1000000.0);
     if (my_b_printf(&log_file,
                     "# Query_time: %s  Lock_time: %s"
-                    " Rows_sent: %lu  Rows_examined: %lu\n",
+                    " Rows_sent: %lu  Rows_examined: %lu"
+                    " Logical_reads: %lu Physical_reads: %lu\n",
                     query_time_buff, lock_time_buff,
                     (ulong) thd->get_sent_row_count(),
-                    (ulong) thd->get_examined_row_count()) == (uint) -1)
+                    (ulong) thd->get_examined_row_count(),
+                    logical_reads, physical_reads) == (uint) -1)
       tmp_errno= errno;
     if (thd->db && strcmp(thd->db, db))
     {						// Database changed

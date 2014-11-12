@@ -53,6 +53,8 @@ Created 11/5/1995 Heikki Tuuri
 #include "page0zip.h"
 #include "srv0mon.h"
 #include "buf0checksum.h"
+#include "iostat.h"
+#include "sql_iostat.h"
 
 /*
 		IMPLEMENTATION OF THE BUFFER POOL
@@ -241,6 +243,8 @@ in a tablespace) have recently been referenced, we may predict
 that the whole area may be needed in the near future, and issue
 the read requests for the whole area.
 */
+
+_io_stat_func_ptr io_stat_func_ptr;
 
 #ifndef UNIV_HOTBACKUP
 /** Value in microseconds */
@@ -2653,7 +2657,8 @@ loop:
 
 	/* Now safe to release page_hash mutex */
 	rw_lock_s_unlock(hash_lock);
-
+  
+  io_stat_func_ptr(LOG_READ);
 got_block:
 
 	fix_mutex = buf_page_get_mutex(&fix_block->page);
@@ -3156,6 +3161,7 @@ buf_page_optimistic_get(
 			    buf_block_get_page_no(block)) == 0);
 #endif
 	buf_pool = buf_pool_from_block(block);
+  io_stat_func_ptr(LOG_READ);
 	buf_pool->stat.n_page_gets++;
 
 	return(TRUE);
@@ -3259,6 +3265,7 @@ buf_page_get_known_nowait(
 	     || (ibuf_count_get(buf_block_get_space(block),
 				buf_block_get_page_no(block)) == 0));
 #endif
+  io_stat_func_ptr(LOG_READ);
 	buf_pool->stat.n_page_gets++;
 
 	return(TRUE);

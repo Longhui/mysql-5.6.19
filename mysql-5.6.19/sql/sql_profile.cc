@@ -259,7 +259,7 @@ void PROF_MEASUREMENT::collect()
 
 
 QUERY_PROFILE::QUERY_PROFILE(PROFILING *profiling_arg, const char *status_arg)
-  :profiling(profiling_arg), profiling_query_id(0), query_source(NULL)
+  :profiling(profiling_arg), profiling_query_id(0), query_source(NULL), logical_reads(0), physical_reads(0)
 {
   m_seq_counter= 1;
   PROF_MEASUREMENT *prof= new PROF_MEASUREMENT(this, status_arg);
@@ -421,7 +421,8 @@ void PROFILING::finish_current_query()
         (! current->entries.is_empty()))
     {
       current->profiling_query_id= next_profile_id();   /* assign an id */
-
+      current->logical_reads = thd->get_logical_reads();
+      current->physical_reads = thd->get_physical_reads();
       history.push_back(current);
       last= current; /* never contains something that is not in the history. */
       current= NULL;
@@ -450,6 +451,10 @@ bool PROFILING::show_profiles()
                                            MYSQL_TYPE_LONG));
   field_list.push_back(new Item_return_int("Duration", TIME_FLOAT_DIGITS-1,
                                            MYSQL_TYPE_DOUBLE));
+  field_list.push_back(new Item_return_int("Logical_reads", 12,
+                                          MYSQL_TYPE_LONGLONG));
+  field_list.push_back(new Item_return_int("Physical_reads", 12,
+                                          MYSQL_TYPE_LONGLONG));
   field_list.push_back(new Item_empty_string("Query", 40));
 
   if (thd->protocol->send_result_set_metadata(&field_list,
@@ -483,6 +488,8 @@ bool PROFILING::show_profiles()
     protocol->store((uint32)(prof->profiling_query_id));
     protocol->store((double)(query_time_usecs/(1000.0*1000)),
                     (uint32) TIME_FLOAT_DIGITS-1, &elapsed);
+    protocol->store((longlong)prof->logical_reads);
+    protocol->store((longlong)prof->physical_reads);
     if (prof->query_source != NULL)
       protocol->store(prof->query_source, strlen(prof->query_source),
                       system_charset_info);

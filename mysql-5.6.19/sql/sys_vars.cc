@@ -1604,6 +1604,13 @@ static Sys_var_double Sys_long_query_time(
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(update_cached_long_query_time));
 
+static Sys_var_ulong Sys_long_query_io(
+       "long_query_io",
+       "Log all queries that have taken more than long_query_io "
+       "to execute to file. The argument will be treated as a decimal value ",
+       GLOBAL_VAR(long_query_io_ulong), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(0, ULONG_MAX), DEFAULT(100), BLOCK_SIZE(1));
+
 static bool fix_low_prio_updates(sys_var *self, THD *thd, enum_var_type type)
 {
   if (type == OPT_SESSION)
@@ -3815,6 +3822,46 @@ static Sys_var_mybool Sys_general_log(
        DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
        ON_UPDATE(fix_log_state));
 
+static bool update_slow_query_type(sys_var *self, THD *thd, enum_var_type type)
+{
+  bool res;
+  my_bool *UNINIT_VAR(slow_log_ptr), *UNINIT_VAR(io_log_ptr), newval, UNINIT_VAR(oldval);
+  uint UNINIT_VAR(log_type);
+  opt_slow_log = slow_query_type & 0x0001;
+  opt_slow_io_log = (slow_query_type & 0x0002) >> 1;
+  slow_log_ptr = &opt_slow_log;
+  io_log_ptr = &opt_slow_io_log;
+  oldval = logger.get_slow_log_file_handler()->is_open();
+  log_type = QUERY_LOG_SLOW;
+  newval = opt_slow_log || opt_slow_io_log;
+  if (oldval == newval)
+  {
+    return false;
+  }
+  *slow_log_ptr = *io_log_ptr = oldval;
+  mysql_mutex_unlock(&LOCK_global_system_variables);
+  if (!newval)
+  {
+    logger.deactivate_log_handler(thd, log_type);
+    res = false;
+  }
+  else
+  {
+    res = logger.activate_log_handler(thd, log_type);
+  }
+  mysql_mutex_lock(&LOCK_global_system_variables);
+  return res;
+}
+
+static Sys_var_ulong Sys_slow_query_type(
+       "slow_query_type",
+       "Log slow queries to a table or log file. Defaults logging to a file "
+       "hostname-slow.log or a table mysql.slow_log if --log-output=TABLE is "
+       "used. Must be enabled to activate other slow log options",
+       GLOBAL_VAR(slow_query_type), CMD_LINE(OPT_ARG),
+       VALID_RANGE(0, 3), DEFAULT(0), BLOCK_SIZE(1), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+       ON_UPDATE(update_slow_query_type), DEPRECATED("'@@slow_query_type'"));
+
 static Sys_var_mybool Sys_slow_query_log(
        "slow_query_log",
        "Log slow queries to a table or log file. Defaults logging to a file "
@@ -3840,6 +3887,7 @@ static bool fix_log_state(sys_var *self, THD *thd, enum_var_type type)
   else if (self == &Sys_slow_query_log)
   {
     newvalptr= &opt_slow_log;
+    slow_query_type = (slow_query_type & 0x0002) + opt_slow_log;
     oldval=    logger.get_slow_log_file_handler()->is_open();
     log_type=  QUERY_LOG_SLOW;
   }

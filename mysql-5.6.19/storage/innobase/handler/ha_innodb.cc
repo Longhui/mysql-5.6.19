@@ -94,6 +94,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #endif /* UNIV_DEBUG */
 #include "fts0priv.h"
 #include "page0zip.h"
+#include "iostat.h"
 
 enum_tx_isolation thd_get_trx_isolation(const THD* thd);
 
@@ -2820,6 +2821,7 @@ innobase_init(
 		innobase_release_temporary_latches;
 
 	innobase_hton->data = &innodb_api_cb;
+  io_stat_func_ptr = innobase_hton->io_stat_ptr;
 
 	ut_a(DATA_MYSQL_TRUE_VARCHAR == (ulint)MYSQL_TYPE_VARCHAR);
 

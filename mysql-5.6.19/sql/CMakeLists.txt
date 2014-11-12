@@ -158,11 +158,12 @@ SET(SQL_SHARED_SOURCES
   sql_union.cc
   sql_update.cc
   sql_view.cc
+  sql_iostat.cc
   strfunc.cc
   sys_vars.cc
   table.cc
   table_cache.cc
-  thr_malloc.cc 
+  thr_malloc.cc
   transaction.cc
   tztime.cc
   uniques.cc

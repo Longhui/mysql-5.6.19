@@ -38,6 +38,7 @@
 #include "probes_mysql.h"
 #include <mysql/psi/mysql_table.h>
 #include "debug_sync.h"         // DEBUG_SYNC
+#include "sql_iostat.h"
 #include <my_bit.h>
 #include <list>
 
@@ -657,6 +658,7 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
   }
 
   hton->slot= HA_SLOT_UNDEF;
+  hton->io_stat_ptr = thd_io_incr;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
   if (plugin->plugin->init && plugin->plugin->init(hton))
