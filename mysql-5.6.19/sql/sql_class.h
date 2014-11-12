@@ -2774,6 +2774,9 @@ private:
   */
   ha_rows m_examined_row_count;
 
+  ha_rows m_logical_reads;
+  ha_rows m_physical_reads;
+
 private:
   USER_CONN *m_user_connect;
 
@@ -2794,12 +2797,20 @@ public:
   void time_out_user_resource_limits();
 
 public:
+  ha_rows get_logical_reads() const
+  {return m_logical_reads;}
+
+  ha_rows get_physical_reads() const
+  {return m_physical_reads;}
+
   ha_rows get_sent_row_count() const
   { return m_sent_row_count; }
 
   ha_rows get_examined_row_count() const
   { return m_examined_row_count; }
 
+  void set_logical_reads(ha_rows reads);
+  void set_physical_reads(ha_rows reads);
   void set_sent_row_count(ha_rows count);
   void set_examined_row_count(ha_rows count);
 
@@ -3381,7 +3392,8 @@ public:
   void update_server_status()
   {
     ulonglong end_utime_of_query= current_utime();
-    if (end_utime_of_query > utime_after_lock + variables.long_query_time)
+    if ((end_utime_of_query > utime_after_lock + variables.long_query_time) ||
+      (m_logical_reads > long_query_io_ulong))
       server_status|= SERVER_QUERY_WAS_SLOW;
   }
   inline ulonglong found_rows(void)

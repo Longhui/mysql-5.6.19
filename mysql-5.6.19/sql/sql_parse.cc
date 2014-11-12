@@ -1785,6 +1785,8 @@ done:
   free_root(thd->mem_root,MYF(MY_KEEP_PREALLOC));
 
   /* DTRACE instrumentation, end */
+  thd->set_logical_reads(0);
+  thd->set_physical_reads(0);
   if (MYSQL_QUERY_DONE_ENABLED() || MYSQL_COMMAND_DONE_ENABLED())
   {
     int res __attribute__((unused));
@@ -5909,6 +5911,8 @@ void THD::reset_for_next_command()
   thd->get_stmt_da()->reset_for_next_command();
   thd->rand_used= 0;
   thd->m_sent_row_count= thd->m_examined_row_count= 0;
+  thd->set_logical_reads(0);
+  thd->set_physical_reads(0);
 
   thd->reset_current_stmt_binlog_format_row();
   thd->binlog_unsafe_warning_flags= 0;

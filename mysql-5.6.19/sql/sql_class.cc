@@ -4474,6 +4474,16 @@ void THD::set_examined_row_count(ha_rows count)
   MYSQL_SET_STATEMENT_ROWS_EXAMINED(m_statement_psi, m_examined_row_count);
 }
 
+void THD::set_logical_reads(ha_rows reads)
+{
+  m_logical_reads = reads;
+}
+
+void THD::set_physical_reads(ha_rows reads)
+{
+  m_physical_reads = reads;
+}
+
 void THD::inc_sent_row_count(ha_rows count)
 {
   m_sent_row_count+= count;
