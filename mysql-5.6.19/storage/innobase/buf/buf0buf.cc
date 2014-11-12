@@ -55,6 +55,7 @@ Created 11/5/1995 Heikki Tuuri
 #include "buf0checksum.h"
 #include "iostat.h"
 #include "sql_iostat.h"
+#include "resource_prof.h"
 
 /*
 		IMPLEMENTATION OF THE BUFFER POOL
@@ -245,6 +246,7 @@ the read requests for the whole area.
 */
 
 _io_stat_func_ptr io_stat_func_ptr;
+_resource_profiler_func_ptr resource_profiler_func_ptr;
 
 #ifndef UNIV_HOTBACKUP
 /** Value in microseconds */
@@ -2885,6 +2887,7 @@ got_block:
 	ut_ad(!rw_lock_own(hash_lock, RW_LOCK_SHARED));
 #endif /* UNIV_SYNC_DEBUG */
 
+  resource_profiler_func_ptr(1);
 	ut_ad(buf_block_get_state(fix_block) == BUF_BLOCK_FILE_PAGE);
 
 #if UNIV_WORD_SIZE == 4
@@ -3162,6 +3165,7 @@ buf_page_optimistic_get(
 #endif
 	buf_pool = buf_pool_from_block(block);
   io_stat_func_ptr(LOG_READ);
+  resource_profiler_func_ptr(1);
 	buf_pool->stat.n_page_gets++;
 
 	return(TRUE);
@@ -3266,6 +3270,7 @@ buf_page_get_known_nowait(
 				buf_block_get_page_no(block)) == 0));
 #endif
   io_stat_func_ptr(LOG_READ);
+  resource_profiler_func_ptr(1);
 	buf_pool->stat.n_page_gets++;
 
 	return(TRUE);

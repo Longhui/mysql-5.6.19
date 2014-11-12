@@ -1359,6 +1359,10 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  MASTER_HEARTBEAT_PERIOD_SYM
 %token  MATCH                         /* SQL-2003-R */
 %token  MAX_CONNECTIONS_PER_HOUR
+%token	MAX_CPU_TIMES_PROFILE
+%token	MAX_CPU_TIMES_PER_TRX_PROFILE
+%token	MAX_IO_READS_PROFILE
+%token	MAX_IO_READS_PER_TRX_PROFILE
 %token  MAX_QUERIES_PER_HOUR
 %token  MAX_ROWS
 %token  MAX_SIZE_SYM
@@ -1506,6 +1510,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, ulong *yystacksize);
 %token  REVERSE_SYM
 %token  REVOKE                        /* SQL-2003-R */
 %token  RIGHT                         /* SQL-2003-R */
+%token	ROLE_SYM
 %token  ROLLBACK_SYM                  /* SQL-2003-R */
 %token  ROLLUP_SYM                    /* SQL-2003-R */
 %token  ROUTINE_SYM                   /* SQL-2003-N */
@@ -2508,7 +2513,53 @@ create:
           {
             Lex->sql_command= SQLCOM_CREATE_SERVER;
           }
+				| CREATE PROFILE_SYM clear_privileges opt_if_not_exists ident LIMIT profile_option_list
+				  {
+					  LEX *lex = Lex;
+						lex->sql_command = SQLCOM_CREATE_PROFILE;
+						lex->name = $5;
+						lex->create_info.options = $4;
+					}
+				| CREATE ROLE_SYM clear_privileges opt_if_not_exists ident
+				  {
+					  LEX *lex = Lex;
+						lex->sql_command = SQLCOM_CREATE_ROLE;
+						lex->name = $5;
+						lex->create_info.options = $4;
+					}
         ;
+
+profile_option_list:
+					profile_option_list profile_option {}
+				|	profile_option {}
+				;
+
+profile_option:
+					MAX_CPU_TIMES_PROFILE ulong_num
+					{
+						LEX *lex = Lex;
+						lex->profile_res.cpu_times = $2;
+						lex->mqh.specified_limits |= USER_RESOURCES::CPU_TIMES;
+					}
+				| MAX_IO_READS_PROFILE ulong_num
+				  {
+						LEX *lex = Lex;
+						lex->profile_res.io_reads = $2;
+						lex->mqh.specified_limits |= USER_RESOURCES::IO_READS;
+					}
+        | MAX_CPU_TIMES_PER_TRX_PROFILE ulong_num
+          {
+            LEX *lex = Lex;
+            lex->profile_res.cpu_times_per_trx=$2;
+            lex->mqh.specified_limits|= USER_RESOURCES::CPU_TIMES_PER_TRX;
+          }
+        | MAX_IO_READS_PER_TRX_PROFILE ulong_num
+          {
+            LEX *lex = Lex;
+            lex->profile_res.io_reads_per_trx=$2;
+            lex->mqh.specified_limits|= USER_RESOURCES::IO_READS_PER_TRX;
+          }
+				;
 
 server_def:
           SERVER_SYM
@@ -2758,9 +2809,11 @@ clear_privileges:
            lex->grant= lex->grant_tot_col= 0;
            lex->all_privileges= 0;
            lex->select_lex.db= 0;
+					 lex->priv_object = PRIVILEGES_USER;
            lex->ssl_type= SSL_TYPE_NOT_SPECIFIED;
            lex->ssl_cipher= lex->x509_subject= lex->x509_issuer= 0;
            memset(&(lex->mqh), 0, sizeof(lex->mqh));
+					 memset(&(lex->profile_res), 0, sizeof(lex->profile_res));
          }
         ;
 
@@ -7499,6 +7552,33 @@ alter:
           {
             Lex->sql_command= SQLCOM_ALTER_USER;
           }
+				| ALTER PROFILE_SYM clear_privileges ident LIMIT profile_option_list
+				  {
+				    LEX *lex=Lex;
+				    lex->sql_command=SQLCOM_ALTER_PROFILE;
+				    lex->name = $4;
+				  }
+				| ALTER USER clear_privileges user PROFILE_SYM ident
+				  {
+				    LEX *lex = Lex;
+				    lex->users_list.push_front ($4);
+				    lex->sql_command=SQLCOM_ALTER_USER_PROFILE;
+				    lex->name=$6;
+				  }
+				| ALTER ROLE_SYM clear_privileges grant_list ADD opt_privileges grant_privileges ON opt_table grant_ident
+				  {
+				    LEX *lex= Lex;
+		            lex->sql_command= SQLCOM_GRANT;
+		            lex->type= 0;
+					lex->priv_object = PRIVILEGES_ROLE;
+				  }
+				| ALTER ROLE_SYM clear_privileges grant_list DROP opt_privileges grant_privileges ON opt_table grant_ident
+				  {
+				    LEX *lex= Lex;
+		            lex->sql_command= SQLCOM_REVOKE;
+		            lex->type= 0;
+					lex->priv_object = PRIVILEGES_ROLE;
+				  }
         ;
 
 alter_user_list:
@@ -11894,6 +11974,20 @@ drop:
             Lex->server_options.server_name= $4.str;
             Lex->server_options.server_name_length= $4.length;
           }
+				| DROP PROFILE_SYM if_exists ident
+				  {
+				    LEX *lex = Lex;
+				    lex->sql_command = SQLCOM_DROP_PROFILE;
+				    lex->drop_if_exists = $3;
+				    lex->name = $4;
+				  }
+				| DROP ROLE_SYM if_exists ident
+				  {
+				    LEX *lex = Lex;
+				    lex->sql_command = SQLCOM_DROP_ROLE;
+				    lex->drop_if_exists = $3;
+				    lex->name = $4;
+				  }
         ;
 
 table_list:
@@ -12631,6 +12725,12 @@ show_param:
             lex->grant_user=$3;
             lex->grant_user->password=null_lex_str;
           }
+				| GRANTS FOR_SYM ROLE_SYM user
+					{
+						LEX *lex = Lex;
+						lex->sql_command = SQLCOM_SHOW_GRANTS;
+						lex->grant_user = $4;
+					}
         | CREATE DATABASE opt_if_not_exists ident
           {
             Lex->sql_command=SQLCOM_SHOW_CREATE_DB;
@@ -12987,7 +13087,18 @@ reset_option:
           slave_reset_options { }
         | MASTER_SYM          { Lex->type|= REFRESH_MASTER; }
         | QUERY_SYM CACHE_SYM { Lex->type|= REFRESH_QUERY_CACHE;}
+				| profile_resource FOR_SYM user
+				  {
+						Lex->users_list.empty();
+						Lex->users_list.push_front($3);
+					}
         ;
+
+profile_resource:
+					CPU_SYM{ Lex->type |= REFRESH_PROFILE_CPU;}
+				| IO_SYM{ Lex->type |= REFRESH_PROFILE_IO;}
+				| ALL{ Lex->type |= REFRESH_PROFILE_ALL;}
+				;
 
 slave_reset_options:
           /* empty */ { Lex->reset_slave_info.all= false; }
@@ -14290,6 +14401,10 @@ keyword_sp:
         | MASTER_SSL_KEY_SYM       {}
         | MASTER_AUTO_POSITION_SYM {}
         | MAX_CONNECTIONS_PER_HOUR {}
+				| MAX_CPU_TIMES_PROFILE	   {} 
+				| MAX_CPU_TIMES_PER_TRX_PROFILE	{}
+				| MAX_IO_READS_PROFILE		 {}
+				|	MAX_IO_READS_PER_TRX_PROFILE	{}
         | MAX_QUERIES_PER_HOUR     {}
         | MAX_SIZE_SYM             {}
         | MAX_UPDATES_PER_HOUR     {}
@@ -14369,6 +14484,7 @@ keyword_sp:
         | RETURNED_SQLSTATE_SYM    {}
         | RETURNS_SYM              {}
         | REVERSE_SYM              {}
+				| ROLE_SYM								 {}
         | ROLLUP_SYM               {}
         | ROUTINE_SYM              {}
         | ROWS_SYM                 {}
@@ -15241,6 +15357,13 @@ revoke_command:
             LEX *lex= Lex;
             lex->type= 0;
           }
+				| grant_privileges FROM ROLE_SYM grant_list ON opt_table grant_ident
+					{
+						LEX *lex = Lex;
+						lex->sql_command = SQLCOM_REVOKE;
+						lex->type = 0;
+						lex->priv_object = PRIVILEGES_ROLE;
+					}
         | grant_privileges ON FUNCTION_SYM grant_ident FROM grant_list
           {
             LEX *lex= Lex;
@@ -15271,6 +15394,12 @@ revoke_command:
             lex->users_list.push_front ($3);
             lex->type= TYPE_ENUM_PROXY;
           } 
+				| ROLE_SYM FROM grant_list
+					{
+						LEX *lex = Lex;
+						lex->sql_command = SQLCOM_REVOKE_ROLE;
+						lex->type = 0;
+					}
         ;
 
 grant:
@@ -15285,6 +15414,13 @@ grant_command:
             LEX *lex= Lex;
             lex->type= 0;
           }
+				| grant_privileges TO_SYM ROLE_SYM grant_list ON opt_table grant_ident grant_options
+					{
+						LEX *lex = Lex;
+						lex->sql_command = SQLCOM_GRANT;
+						lex->type = 0;
+						lex->priv_object = PRIVILEGES_ROLE;
+					}
         | grant_privileges ON FUNCTION_SYM grant_ident TO_SYM grant_list
           require_clause grant_options
           {
@@ -15313,6 +15449,13 @@ grant_command:
             lex->users_list.push_front ($3);
             lex->type= TYPE_ENUM_PROXY;
           } 
+				| ROLE_SYM ident TO_SYM grant_list opt_check_option
+					{
+						LEX *lex = Lex;
+						lex->name = $2;
+						lex->sql_command = SQLCOM_GRANT_ROLE;
+						lex->type =0;
+					}
         ;
 
 opt_table:
@@ -15384,6 +15527,7 @@ object_privilege:
         | EVENT_SYM               { Lex->grant |= EVENT_ACL;}
         | TRIGGER_SYM             { Lex->grant |= TRIGGER_ACL; }
         | CREATE TABLESPACE       { Lex->grant |= CREATE_TABLESPACE_ACL; }
+				| PROFILE_SYM							{ Lex->grant |= PROFILE_ACL; }
         ;
 
 opt_and:
@@ -15650,6 +15794,11 @@ opt_grant_option:
           /* empty */ {}
         | WITH GRANT OPTION { Lex->grant |= GRANT_ACL;}
         ;
+
+opt_check_option:
+					/* empty */{ Lex->grant_role_check = 0; }
+				| WITH CHECK_SYM OPTION { Lex->grant_role_check = 1;}
+				;
 
 grant_option_list:
           grant_option_list grant_option {}

@@ -966,8 +966,8 @@ bool mysqld_show_create_db(THD *thd, char *dbname,
   if (test_all_bits(sctx->master_access, DB_ACLS))
     db_access=DB_ACLS;
   else
-    db_access= (acl_get(sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
-                        sctx->priv_user, dbname, 0) | sctx->master_access);
+    db_access= (acl_get(sctx->use_role ? sctx->role_host : sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
+                        sctx->use_role ? sctx->priv_role : sctx->priv_user, dbname, 0) | sctx->master_access);
   if (!(db_access & DB_ACLS) && check_grant_db(thd,dbname))
   {
     my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
@@ -4052,8 +4052,8 @@ int get_all_tables(THD *thd, TABLE_LIST *tables, Item *cond)
                        &thd->col_access, NULL, 0, 1) ||
           (!thd->col_access && check_grant_db(thd, db_name->str))) ||
         sctx->master_access & (DB_ACLS | SHOW_DB_ACL) ||
-        acl_get(sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
-                sctx->priv_user, db_name->str, 0))
+        acl_get(sctx->use_role ? sctx->role_host : sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
+                sctx->use_role ? sctx->priv_role : sctx->priv_user, db_name->str, 0))
 #endif
     {
       List<LEX_STRING> table_names;
@@ -4226,8 +4226,8 @@ int fill_schema_schemata(THD *thd, TABLE_LIST *tables, Item *cond)
     }
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
     if (sctx->master_access & (DB_ACLS | SHOW_DB_ACL) ||
-	acl_get(sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
-                sctx->priv_user, db_name->str, 0) ||
+	acl_get(sctx->use_role ? sctx->role_host : sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
+                sctx->use_role ? sctx->priv_role : sctx->priv_user, db_name->str, 0) ||
 	!check_grant_db(thd, db_name->str))
 #endif
     {

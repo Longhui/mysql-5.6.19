@@ -23,6 +23,25 @@ class THD;
 typedef struct st_lex_user LEX_USER;
 typedef struct user_conn USER_CONN;
 
+void init_max_curr_resources(void);
+void free_max_curr_resources(void);
+void delete_curr_resources(CURR_RESOURCES *cr);
+struct curr_resources *
+create_curr_resources(const char *user, const char *host,
+                   ulonglong curr_cpu_times, ulonglong curr_io_reads);
+struct curr_resources *
+search_curr_resources(const char *user, const char *host);
+
+void init_max_profile_resources(void);
+void free_max_profile_resources(void);
+void profile_resources_reset();
+void delete_profile_resources(PROFILE_RESOURCES *profile);
+struct profile_resources *
+create_profile_resources(const char *profile_name, ulonglong cpu_times, ulonglong io_reads,
+        ulonglong cpu_times_per_trx, ulonglong io_reads_per_trx, size_t mem_size);
+struct profile_resources *
+search_profile_resources(const char *profile_name);
+
 void init_max_user_conn(void);
 void free_max_user_conn(void);
 
@@ -33,6 +52,7 @@ void reset_mqh(LEX_USER *lu, bool get_them);
 bool check_mqh(THD *thd, uint check_command);
 void time_out_user_resource_limits(THD *thd, USER_CONN *uc);
 void decrease_user_connections(USER_CONN *uc);
+void decrease_curr_resources(CURR_RESOURCES *cr, uint connections);
 void release_user_connection(THD *thd);
 bool thd_init_client_charset(THD *thd, uint cs_number);
 bool setup_connection_thread_globals(THD *thd);

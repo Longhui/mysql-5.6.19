@@ -1928,6 +1928,11 @@ int write_record(THD *thd, TABLE *table, COPY_INFO *info, COPY_INFO *update)
     goto ok_or_after_trg_err;
   }
 
+  if (thd->m_error)
+  {
+    error = thd->m_error;
+    goto err;
+  }
 after_trg_n_copied_inc:
   info->stats.copied++;
   thd->record_first_successful_insert_id_in_cur_stmt(table->file->insert_id_for_cur_row);

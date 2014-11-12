@@ -1254,14 +1254,17 @@ public:
   */
   char   *user;
   char   priv_user[USERNAME_LENGTH];
+  char   priv_role[USERNAME_LENGTH];
   char   proxy_user[USERNAME_LENGTH + MAX_HOSTNAME + 5];
   /* The host privilege we are using */
   char   priv_host[MAX_HOSTNAME];
+  static const char *role_host;
   /* points to host if host is available, otherwise points to ip */
   const char *host_or_ip;
   ulong master_access;                 /* Global privileges from mysql.user */
   ulong db_access;                     /* Privileges for current db */
   bool password_expired;               /* password expiration flag */
+  bool use_role;
 
   void init();
   void destroy();
@@ -2755,6 +2758,7 @@ public:
 
   ha_rows    cuted_fields;
 
+  int       m_error;
 private:
   /**
     Number of rows we actually sent to the client, including "synthetic"
@@ -2773,6 +2777,9 @@ private:
     filesort() before reading it for e.g. update.
   */
   ha_rows m_examined_row_count;
+  ulonglong m_conn_cpu_times_per_trx;
+  ulonglong m_trx_start_thread_times;
+  ulonglong m_conn_io_reads_per_trx;
 
   ha_rows m_logical_reads;
   ha_rows m_physical_reads;
@@ -2794,6 +2801,10 @@ public:
 
   void increment_questions_counter();
 
+  void increment_curr_cpu_times(ulonglong timespan);
+
+  void increment_curr_io_reads();
+
   void time_out_user_resource_limits();
 
 public:
@@ -2802,6 +2813,20 @@ public:
 
   ha_rows get_physical_reads() const
   {return m_physical_reads;}
+  ulonglong get_conn_cpu_times_per_trx() const
+  { return m_conn_cpu_times_per_trx; }
+
+  void set_conn_cpu_times_per_trx(ulonglong cpu_times);
+
+  ulonglong get_trx_start_thread_times() const
+  { return m_trx_start_thread_times; }
+
+  void set_trx_start_thread_times(ulonglong start_times);
+
+  ulonglong get_conn_io_reads_per_trx() const
+  { return m_conn_io_reads_per_trx;}
+
+  void set_conn_io_reads_per_trx(ulonglong io_reads);
 
   ha_rows get_sent_row_count() const
   { return m_sent_row_count; }

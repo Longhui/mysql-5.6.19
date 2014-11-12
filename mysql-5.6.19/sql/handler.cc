@@ -39,6 +39,8 @@
 #include <mysql/psi/mysql_table.h>
 #include "debug_sync.h"         // DEBUG_SYNC
 #include "sql_iostat.h"
+#include "resource_profiler.h"
+
 #include <my_bit.h>
 #include <list>
 
@@ -659,6 +661,7 @@ int ha_initialize_handlerton(st_plugin_int *plugin)
 
   hton->slot= HA_SLOT_UNDEF;
   hton->io_stat_ptr = thd_io_incr;
+  hton->resource_profiler_ptr = resource_statistics;
   /* Historical Requirement */
   plugin->data= hton; // shortcut for the future
   if (plugin->plugin->init && plugin->plugin->init(hton))
@@ -3772,6 +3775,32 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_USER_TABLE_DROPPED:
     textno = ER_USER_TABLE_DROPPED;
+  case HA_ERR_CPU_TIMES_LIMITED:
+ 	  textno = ER_CPU_TIMES_LIMITED;
+    break;
+  case HA_ERR_IO_READS_LIMITED:
+ 	  textno = ER_IO_READS_LIMITED;
+    break;
+  case HA_ERR_TRX_CPU_TIMES_LIMITED:
+ 	  textno = ER_TRX_CPU_TIMES_LIMITED;
+    break;
+  case HA_ERR_TRX_IO_READS_LIMITED:
+ 	  textno = ER_TRX_IO_READS_LIMITED;
+    break;
+  case HA_ERR_PROFILER_ACCESS_DENIED:
+ 	  textno = ER_PROFILER_ACCESS_DENIED;
+    break;
+  case HA_ERR_PROFILE_ALREADY_EXISTS:
+ 	  textno = ER_PROFILE_ALREADY_EXISTS;
+    break;
+  case HA_ERR_PROFILE_DOESNOT_EXIST:
+ 	  textno = ER_PROFILE_DOESNOT_EXIST;
+    break;
+  case HA_ERR_ROLE_DOESNOT_EXIST:
+ 	  textno = ER_ROLE_DOESNOT_EXIST;
+    break;
+  case HA_ERR_GRANT_ROLE_TO_USER:
+ 	  textno = ER_GRANT_ROLE_TO_USER;
     break;
   default:
     {

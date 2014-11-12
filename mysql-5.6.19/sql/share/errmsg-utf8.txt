@@ -6568,6 +6568,33 @@ ER_PLUGIN_NO_UNINSTALL
 ER_PLUGIN_NO_INSTALL
   eng "Plugin '%s' is marked as not dynamically installable. You have to stop the server to install it."
 
+ER_CPU_TIMES_LIMITED
+  eng "User '%s@%s' CPU resource is exhausted."
+
+ER_IO_READS_LIMITED
+  eng "User '%s@%s' IO resource is exhausted."
+
+ER_TRX_CPU_TIMES_LIMITED
+  eng "User '%s@%s' CPU times of the TRX limited."
+
+ER_TRX_IO_READS_LIMITED
+  eng "User '%s@%s' IO reads of the TRX limited."
+
+ER_PROFILER_ACCESS_DENIED
+  eng "Profile tables can't to be accessed by SQL."
+
+ER_PROFILE_ALREADY_EXISTS
+  eng "Profile '%s' already exists."
+
+ER_PROFILE_DOESNOT_EXIST
+  eng "Profile '%s' doesn't exist."
+
+ER_ROLE_DOESNOT_EXIST
+  eng "Role '%s' doesn't exist."
+
+ER_GRANT_ROLE_TO_USER
+  eng "grant role '%s' to user '%s'@'%s' WITH_CHECK_OPTION error, different '%s' privileges"
+
 ER_BINLOG_UNSAFE_WRITE_AUTOINC_SELECT
   eng "Statements writing to a table with an auto-increment column after selecting from another table are unsafe because the order in which rows are retrieved determines what (if any) rows will be written. This order cannot be predicted and may differ on master and the slave."
 

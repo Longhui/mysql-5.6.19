@@ -38,6 +38,7 @@
 #include "opt_trace.h"
 #include "sql_optimizer.h"              // JOIN
 #include "sql_base.h"
+#include "resource_profiler.h"
 
 #include <algorithm>
 #include <utility>
@@ -781,6 +782,7 @@ static ha_rows find_all_keys(Sort_param *param, SQL_SELECT *select,
 	break;
     }
 
+    resource_statistics(0);
     if (*killed)
     {
       DBUG_PRINT("info",("Sort killed by user"));
@@ -1662,6 +1664,11 @@ int merge_buffers(Sort_param *param, IO_CACHE *from_file,
     }
     for (;;)
     {
+      if (resource_statistics(0) != 0)
+      {
+        error = 1;
+        goto err;
+      }
       buffpek= (BUFFPEK*) queue_top(&queue);
       if (cmp)                                        // Remove duplicates
       {
@@ -1726,6 +1733,11 @@ int merge_buffers(Sort_param *param, IO_CACHE *from_file,
 
   do
   {
+    if (resource_statistics(0) != 0)
+    {
+      error = 1;
+      goto err;
+    }
     if ((ha_rows) buffpek->mem_count > max_rows)
     {                                        /* Don't write too many records */
       buffpek->mem_count= (uint) max_rows;

@@ -960,6 +960,7 @@ struct handlerton
                                     bool is_sql_layer_system_table);
 
   void (*io_stat_ptr)(uint stat_type);
+  int (*resource_profiler_ptr)(int with_io_read);
    uint32 license; /* Flag for Engine License */
    void *data; /* Location for engines to keep personal structures */
 };

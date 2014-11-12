@@ -1000,6 +1000,9 @@ THD::THD(bool enable_plugins)
   set_command(COM_CONNECT);
   *scramble= '\0';
   skip_gtid_rollback= false;
+  m_conn_cpu_times_per_trx = 0;
+  m_trx_start_thread_times = 0;
+  m_conn_io_reads_per_trx = 0;
 
   /* Call to init() below requires fully initialized Open_tables_state. */
   reset_open_tables_state();
@@ -1016,6 +1019,7 @@ THD::THD(bool enable_plugins)
   sp_proc_cache= NULL;
   sp_func_cache= NULL;
 
+  m_error = 0;
   /* For user vars replication*/
   if (opt_bin_log)
     my_init_dynamic_array(&user_var_events,
@@ -3682,6 +3686,7 @@ void THD::set_status_var_init()
   memset(&status_var, 0, sizeof(status_var));
 }
 
+const char *Security_context::role_host = "@@ROLE@@";
 
 void Security_context::init()
 {
@@ -3692,6 +3697,7 @@ void Security_context::init()
   host_or_ip= "connecting host";
   priv_user[0]= priv_host[0]= proxy_user[0]= '\0';
   master_access= 0;
+  use_role = FALSE;
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
   db_access= NO_ACCESS;
 #endif
@@ -4462,6 +4468,21 @@ void THD::set_statement(Statement *stmt)
   mysql_mutex_unlock(&LOCK_thd_data);
 }
 
+void THD::set_conn_cpu_times_per_trx(ulonglong cpu_times)
+{
+  m_conn_cpu_times_per_trx = cpu_times;
+}
+
+void THD::set_trx_start_thread_times(ulonglong start_times)
+{
+  m_trx_start_thread_times = start_times;
+}
+
+void THD::set_conn_io_reads_per_trx(ulonglong io_reads)
+{
+  m_conn_io_reads_per_trx = io_reads;
+}
+
 void THD::set_sent_row_count(ha_rows count)
 {
   m_sent_row_count= count;
@@ -4920,6 +4941,20 @@ void THD::increment_questions_counter()
 
   m_user_connect->questions++;
 
+  DBUG_VOID_RETURN;
+}
+
+void THD::increment_curr_cpu_times(ulonglong timespan)
+{
+  DBUG_ENTER("THD::increment_curr_cpu_times");
+  m_user_connect->curr_resources->curr_cpu_times += timespan;
+  DBUG_VOID_RETURN;
+}
+
+void THD::increment_curr_io_reads()
+{
+  DBUG_ENTER("THD::increment_curr_io_reads");
+  m_user_connect->curr_resources->curr_io_reads++;
   DBUG_VOID_RETURN;
 }
 

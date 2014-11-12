@@ -100,6 +100,7 @@
 #include "global_threads.h"
 #include "sql_analyse.h"
 #include "table_cache.h" // table_cache_manager
+#include "resource_profiler.h"
 
 #include <algorithm>
 using std::max;
@@ -272,6 +273,35 @@ bool stmt_causes_implicit_commit(const THD *thd, uint mask)
   DBUG_RETURN(!skip);
 }
 
+/* only select command can access the user_profiler and current_user_exhaust table */
+static bool stmt_allowed_operate_profile_table(THD *thd,TABLE_LIST *all_tables)
+{
+  enum{
+    PROFILE_TABLE=0x01,
+    EXHAUST_TABLE=0x02
+  };
+  int accessed = 0;
+  DBUG_ENTER("stmt_allowed_operate_profile_table");
+  for (TABLE_LIST *table=all_tables; table; table=table->next_global)
+  {
+    if (strcmp(table->db,"mysql") == 0)
+    {
+      if(strcmp(table->table_name,"user_profiler") == 0)
+      {
+        accessed |= PROFILE_TABLE;
+      }
+      else if(strcmp(table->table_name,"current_user_exhaust") == 0)
+      {
+        accessed |= EXHAUST_TABLE;
+      }
+    }
+  }
+  if (accessed == 0 || thd->security_ctx->master_access & PROFILE_ACL)
+    DBUG_RETURN(1);
+  if (accessed == 0 && thd->lex->sql_command == SQLCOM_CREATE_TABLE)
+    DBUG_RETURN(1);
+  DBUG_RETURN(0);
+}
 
 /**
   Mark all commands that somehow changes a table.
@@ -497,6 +527,11 @@ void init_update_queries(void)
   sql_command_flags[SQLCOM_SLAVE_START]=        CF_AUTO_COMMIT_TRANS;
   sql_command_flags[SQLCOM_SLAVE_STOP]=         CF_AUTO_COMMIT_TRANS;
 
+  sql_command_flags[SQLCOM_CREATE_PROFILE]|=	  CF_AUTO_COMMIT_TRANS;
+  sql_command_flags[SQLCOM_ALTER_PROFILE]|=		  CF_AUTO_COMMIT_TRANS;
+  sql_command_flags[SQLCOM_DROP_PROFILE]|=		  CF_AUTO_COMMIT_TRANS;
+  sql_command_flags[SQLCOM_CREATE_ROLE]|=		    CF_AUTO_COMMIT_TRANS;
+  sql_command_flags[SQLCOM_DROP_ROLE]|=			    CF_AUTO_COMMIT_TRANS;
   /*
     The following statements can deal with temporary tables,
     so temporary tables should be pre-opened for those statements to
@@ -1771,6 +1806,8 @@ done:
 
   log_slow_statement(thd);
 
+  curr_profiler_record(thd);
+
   THD_STAGE_INFO(thd, stage_cleaning_up);
 
   thd->reset_query();
@@ -1881,6 +1918,20 @@ void log_slow_do(THD *thd)
   DBUG_VOID_RETURN;
 }
 
+void curr_profiler_record(THD *thd)
+{
+  DBUG_ENTER("curr_profiler_record");
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  if(unlikely(thd->in_sub_stmt))
+    DBUG_VOID_RETURN; 
+  if(opt_profiler_record == 2)
+  {
+    thd_proc_info(thd, "record current profiler");
+    acl_profiler_record(thd);
+  }
+#endif
+  DBUG_VOID_RETURN;
+}
 
 /**
   Check whether we need to write the current statement to the slow query
@@ -2555,6 +2606,12 @@ mysql_execute_command(THD *thd)
     thd->mdl_context.release_transactional_locks();
   }
 
+  if(!stmt_allowed_operate_profile_table(thd,all_tables))
+  {
+    my_error(ER_PROFILER_ACCESS_DENIED, MYF(0));
+    DBUG_RETURN(-1);
+  }
+
 #ifndef DBUG_OFF
   if (lex->sql_command != SQLCOM_SET_OPTION)
     DEBUG_SYNC(thd,"before_execute_sql_command");
@@ -2597,6 +2654,8 @@ mysql_execute_command(THD *thd)
     if (open_temporary_tables(thd, all_tables))
       goto error;
   }
+
+  start_trx_statistics(thd);
 
   switch (lex->sql_command) {
 
@@ -4045,13 +4104,23 @@ end_with_restore_list:
     thd->binlog_invoker();
 
     /* Conditionally writes to binlog */
-    if (!(res = mysql_revoke_all(thd, lex->users_list)))
+    if (!(res = mysql_revoke_all(thd, lex->users_list, lex->priv_object == PRIVILEGES_USER)))
       my_ok(thd);
     break;
   }
   case SQLCOM_REVOKE:
   case SQLCOM_GRANT:
   {
+    if (lex->priv_object == PRIVILEGES_ROLE)
+    {
+      LEX_USER *tmp_user;
+      List_iterator<LEX_USER> user_list(lex->users_list);
+      while ((tmp_user = user_list++))
+      {
+        tmp_user->host.str = "@@ROLE@@";
+        tmp_user->host.length = 8;
+      }
+    }
     if (lex->type != TYPE_ENUM_PROXY &&
         check_access(thd, lex->grant | lex->grant_tot_col | GRANT_ACL,
                      first_table ?  first_table->db : select_lex->db,
@@ -4063,7 +4132,7 @@ end_with_restore_list:
     /* Replicate current user as grantor */
     thd->binlog_invoker();
 
-    if (thd->security_ctx->user)              // If not replication
+    if (thd->security_ctx->user && lex->priv_object == PRIVILEGES_USER)              // If not replication
     {
       LEX_USER *user, *tmp_user;
       bool first_user= TRUE;
@@ -4114,7 +4183,8 @@ end_with_restore_list:
         res= mysql_routine_grant(thd, all_tables,
                                  lex->type == TYPE_ENUM_PROCEDURE, 
                                  lex->users_list, grants,
-                                 lex->sql_command == SQLCOM_REVOKE, TRUE);
+                                 lex->sql_command == SQLCOM_REVOKE, TRUE,
+                                 lex->priv_object == PRIVILEGES_USER);
         if (!res)
           my_ok(thd);
       }
@@ -4126,7 +4196,8 @@ end_with_restore_list:
         /* Conditionally writes to binlog */
         res= mysql_table_grant(thd, all_tables, lex->users_list,
 			       lex->columns, lex->grant,
-			       lex->sql_command == SQLCOM_REVOKE);
+			       lex->sql_command == SQLCOM_REVOKE,
+             lex->priv_object == PRIVILEGES_USER);
       }
     }
     else
@@ -4142,11 +4213,12 @@ end_with_restore_list:
         /* Conditionally writes to binlog */
         res = mysql_grant(thd, select_lex->db, lex->users_list, lex->grant,
                           lex->sql_command == SQLCOM_REVOKE,
-                          lex->type == TYPE_ENUM_PROXY);
+                          lex->type == TYPE_ENUM_PROXY,
+                          lex->priv_object == PRIVILEGES_USER);
       }
       if (!res)
       {
-	if (lex->sql_command == SQLCOM_GRANT)
+	if (lex->sql_command == SQLCOM_GRANT && lex->priv_object == PRIVILEGES_USER)
 	{
 	  List_iterator <LEX_USER> str_list(lex->users_list);
 	  LEX_USER *user, *tmp_user;
@@ -4167,6 +4239,25 @@ end_with_restore_list:
       RESET commands are never written to the binary log, so we have to
       initialize this variable because RESET shares the same code as FLUSH
     */
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  if (thd->lex->type == REFRESH_PROFILE_CPU ||
+    thd->lex->type == REFRESH_PROFILE_IO ||
+    thd->lex->type == REFRESH_PROFILE_ALL)
+  {
+    if (!check_global_access(thd, PROFILE_ACL))
+    {
+      if (mysql_reset_profile_resources(thd->lex->users_list, thd->lex->type))
+      {
+        my_ok(thd);
+        break;
+      }
+    }
+    else
+    {
+      goto error;
+    }
+  }
+#endif
     lex->no_write_to_binlog= 1;
   case SQLCOM_FLUSH:
   {
@@ -4936,6 +5027,90 @@ create_sp_error:
     my_ok(thd, 1);
     break;
   }
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  case SQLCOM_CREATE_ROLE:
+  {
+    HA_CREATE_INFO create_info(lex->create_info);
+    if (check_global_access(thd, CREATE_ACL))
+      break;
+    if (!lex->name.str)
+    {
+      my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
+      break;
+    }
+    if (!(res = mysql_create_role(thd, lex->name.str)))
+      my_ok(thd);
+    break;
+  }
+  case SQLCOM_DROP_ROLE:
+  {
+    if (check_global_access(thd, DROP_ACL))
+      break;
+    if (!(res = mysql_drop_role(thd, lex->name.str)))
+      my_ok(thd, 1);
+    break;
+  }
+  case SQLCOM_GRANT_ROLE:
+  {
+    if (check_global_access(thd, GRANT_ACL))
+      break;
+    if (!(res = mysql_grant_role_to_user(thd, lex->name.str, lex->users_list,0,lex->grant_role_check)))
+      my_ok(thd,1);
+    break;
+  }
+  case SQLCOM_REVOKE_ROLE:
+  {
+    if (check_global_access(thd, GRANT_ACL))
+      break;
+    if (!(res = mysql_grant_role_to_user(thd, NULL, lex->users_list,1,lex->grant_role_check)))
+      my_ok(thd,1);
+    break;
+  }
+  case SQLCOM_ALTER_USER_PROFILE:
+  {
+    if (check_global_access(thd,PROFILE_ACL))
+      break;
+    /* Conditionally writes to binlog */
+    if (!(res= mysql_alter_user_profile(thd, lex->users_list,lex->name.str)))
+      my_ok(thd);
+    break;
+  }
+  case SQLCOM_CREATE_PROFILE:
+  {
+    HA_CREATE_INFO create_info(lex->create_info);
+    char *alias;
+    if (check_global_access(thd,PROFILE_ACL))
+      break;
+    if (!(alias=thd->strmake(lex->name.str, lex->name.length)))
+    {
+      my_error(ER_WRONG_DB_NAME, MYF(0), lex->name.str);
+      break;
+    }
+    if (!(res = mysql_create_profile(thd, alias)))
+      my_ok(thd);
+    /*
+      res= mysql_create_db(thd,(lower_case_table_names == 2 ? alias :
+      lex->name.str), &create_info, 0);
+    */
+    break;
+  }
+  case SQLCOM_ALTER_PROFILE:
+  {
+    if (check_global_access(thd, PROFILE_ACL))
+      break;
+    if ( !(res = mysql_alter_profile(thd,lex->name.str)))
+      my_ok(thd, 1);
+    break;
+  }
+  case SQLCOM_DROP_PROFILE:
+  {
+    if (check_global_access(thd, PROFILE_ACL))
+      break;
+    if (!(res = mysql_drop_profile(thd, lex->name.str)))
+      my_ok(thd, 1);
+    break;
+  }
+#endif //NO_EMBEDDED_ACCESS_CHECKS
   case SQLCOM_ANALYZE:
   case SQLCOM_CHECK:
   case SQLCOM_OPTIMIZE:
@@ -5016,7 +5191,8 @@ finish:
       thd->get_stmt_da()->set_overwrite_status(false);
     }
   }
-
+  if (thd->m_error && thd->killed)
+    thd->killed = THD::NOT_KILLED;
   lex->unit.cleanup();
   /* Free tables */
   THD_STAGE_INFO(thd, stage_closing_tables);
@@ -5325,8 +5501,8 @@ check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
     if (!(sctx->master_access & SELECT_ACL))
     {
       if (db && (!thd->db || db_is_pattern || strcmp(db, thd->db)))
-        db_access= acl_get(sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
-                           sctx->priv_user, db, db_is_pattern);
+        db_access= acl_get(sctx->use_role ? sctx->role_host : sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
+                           sctx->use_role ? sctx->priv_role : sctx->priv_user, db, db_is_pattern);
       else
       {
         /* get access for current db */
@@ -5374,8 +5550,8 @@ check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
   }
 
   if (db && (!thd->db || db_is_pattern || strcmp(db,thd->db)))
-    db_access= acl_get(sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
-                       sctx->priv_user, db, db_is_pattern);
+    db_access= acl_get(sctx->use_role ? sctx->role_host : sctx->get_host()->ptr(), sctx->get_ip()->ptr(),
+                       sctx->use_role ? sctx->priv_role : sctx->priv_user, db, db_is_pattern);
   else
     db_access= sctx->db_access;
   DBUG_PRINT("info",("db_access: %lu  want_access: %lu",
@@ -5419,7 +5595,8 @@ check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
   DBUG_PRINT("error",("Access denied"));
   if (!no_errors)
     my_error(ER_DBACCESS_DENIED_ERROR, MYF(0),
-             sctx->priv_user, sctx->priv_host,
+             sctx->use_role ? sctx->priv_role : sctx->priv_user, 
+             sctx->use_role ? sctx->role_host : sctx->priv_host,
              (db ? db : (thd->db ?
                          thd->db :
                          "unknown")));

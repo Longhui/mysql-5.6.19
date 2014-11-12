@@ -89,7 +89,8 @@ enum enum_sql_command {
   SQLCOM_SHOW_RELAYLOG_EVENTS,
   SQLCOM_GET_DIAGNOSTICS,
   SQLCOM_ALTER_USER,
-
+  SQLCOM_CREATE_PROFILE, SQLCOM_ALTER_PROFILE, SQLCOM_DROP_PROFILE, SQLCOM_ALTER_USER_PROFILE,
+  SQLCOM_CREATE_ROLE, SQLCOM_DROP_ROLE, SQLCOM_GRANT_ROLE, SQLCOM_REVOKE_ROLE,
   /*
     When a command is added here, be sure it's also added in mysqld.cc
     in "struct show_var_st status_vars[]= {" ...

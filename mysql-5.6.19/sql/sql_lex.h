@@ -2239,6 +2239,11 @@ struct Proc_analyse_params: public Sql_alloc
 };
 
 
+enum enum_privileges_object
+{
+  PRIVILEGES_USER,
+  PRIVILEGES_ROLE
+};
 /* The state of the lex parsing. This is saved in the THD struct */
 
 struct LEX: public Query_tables_list
@@ -2338,6 +2343,7 @@ struct LEX: public Query_tables_list
   LEX_SLAVE_CONNECTION slave_connection;
   LEX_SERVER_OPTIONS server_options;
   USER_RESOURCES mqh;
+  PROFILE_RESOURCES profile_res;
   LEX_RESET_SLAVE reset_slave_info;
   ulong type;
   /*
@@ -2361,6 +2367,7 @@ struct LEX: public Query_tables_list
   */
   bool expr_allows_subselect;
 
+  enum enum_privileges_object priv_object;
   enum SSL_type ssl_type;			/* defined in violite.h */
   enum enum_duplicates duplicates;
   enum enum_tx_isolation tx_isolation;
@@ -2387,6 +2394,7 @@ struct LEX: public Query_tables_list
   uint8 derived_tables;
   uint8 create_view_algorithm;
   uint8 create_view_check;
+  uint8 grant_role_check;
   uint8 context_analysis_only;
   bool drop_if_exists, drop_temporary, local_file, one_shot_set;
   bool autocommit;

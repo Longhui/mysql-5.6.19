@@ -49,6 +49,7 @@
 #define EVENT_ACL       (1L << 26)
 #define TRIGGER_ACL     (1L << 27)
 #define CREATE_TABLESPACE_ACL (1L << 28)
+#define PROFILE_ACL     (1L << 29)
 /*
   don't forget to update
   1. static struct show_privileges_st sys_privileges[]
@@ -85,7 +86,7 @@
  CREATE_TMP_ACL | LOCK_TABLES_ACL | REPL_SLAVE_ACL | REPL_CLIENT_ACL | \
  EXECUTE_ACL | CREATE_VIEW_ACL | SHOW_VIEW_ACL | CREATE_PROC_ACL | \
  ALTER_PROC_ACL | CREATE_USER_ACL | EVENT_ACL | TRIGGER_ACL | \
- CREATE_TABLESPACE_ACL)
+ CREATE_TABLESPACE_ACL | PROFILE_ACL)
 
 #define DEFAULT_CREATE_PROC_ACLS \
 (ALTER_PROC_ACL | EXECUTE_ACL)
@@ -212,6 +213,7 @@ enum mysql_user_table_field
   MYSQL_USER_FIELD_EVENT_PRIV,
   MYSQL_USER_FIELD_TRIGGER_PRIV,
   MYSQL_USER_FIELD_CREATE_TABLESPACE_PRIV,
+  MYSQL_USER_FIELD_PROFILE_PRIV,
   MYSQL_USER_FIELD_SSL_TYPE,
   MYSQL_USER_FIELD_SSL_CIPHER,
   MYSQL_USER_FIELD_X509_ISSUER,
@@ -223,6 +225,8 @@ enum mysql_user_table_field
   MYSQL_USER_FIELD_PLUGIN,
   MYSQL_USER_FIELD_AUTHENTICATION_STRING,
   MYSQL_USER_FIELD_PASSWORD_EXPIRED,
+  MYSQL_USER_FIELD_PROFILE_NAME,
+  MYSQL_USER_FIELD_ROLE_NAME,
   MYSQL_USER_FIELD_COUNT
 };
 
@@ -240,6 +244,7 @@ void append_user(THD *thd, String *str, LEX_USER *user, bool comma,
                  bool passwd);
 my_bool  acl_init(bool dont_read_acl_tables);
 my_bool acl_reload(THD *thd);
+my_bool acl_profiler_record(THD *thd);
 void acl_free(bool end=0);
 ulong acl_get(const char *host, const char *ip,
 	      const char *user, const char *db, my_bool db_is_pattern);
@@ -252,13 +257,13 @@ int check_change_password(THD *thd, const char *host, const char *user,
 bool change_password(THD *thd, const char *host, const char *user,
 		     char *password);
 bool mysql_grant(THD *thd, const char *db, List <LEX_USER> &user_list,
-                 ulong rights, bool revoke, bool is_proxy);
+                 ulong rights, bool revoke, bool is_proxy, bool is_user);
 int mysql_table_grant(THD *thd, TABLE_LIST *table, List <LEX_USER> &user_list,
                        List <LEX_COLUMN> &column_list, ulong rights,
-                       bool revoke);
+                       bool revoke, bool is_user = TRUE);
 bool mysql_routine_grant(THD *thd, TABLE_LIST *table, bool is_proc,
 			 List <LEX_USER> &user_list, ulong rights,
-			 bool revoke, bool write_to_binlog);
+			 bool revoke, bool write_to_binlog, bool is_user);
 my_bool grant_init();
 void grant_free(void);
 my_bool grant_reload(THD *thd);
@@ -285,7 +290,8 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list);
 bool mysql_drop_user(THD *thd, List <LEX_USER> &list);
 bool mysql_rename_user(THD *thd, List <LEX_USER> &list);
 bool mysql_user_password_expire(THD *thd, List <LEX_USER> &list);
-bool mysql_revoke_all(THD *thd, List <LEX_USER> &list);
+bool mysql_alter_user_profile(THD *thd, List<LEX_USER> &list, const char *profile_name);
+bool mysql_revoke_all(THD *thd, List <LEX_USER> &list, bool is_user);
 void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
                                      const char *db, const char *table);
 bool sp_revoke_privileges(THD *thd, const char *sp_db, const char *sp_name,
@@ -295,6 +301,16 @@ bool sp_grant_privileges(THD *thd, const char *sp_db, const char *sp_name,
 bool check_routine_level_acl(THD *thd, const char *db, const char *name,
                              bool is_proc);
 bool is_acl_user(const char *host, const char *user);
+
+bool mysql_create_profile(THD *thd, const char *profile_name);
+bool mysql_drop_profile(THD *thd, const char *profile_name);
+bool mysql_alter_profile(THD *thd, const char *profile_name);
+bool mysql_reset_profile_resources(List<LEX_USER> &list, uint type);
+
+bool mysql_create_role(THD *thd, const char *role_name);
+bool mysql_drop_role(THD *thd, const char *role_name);
+bool mysql_grant_role_to_user(THD *thd, const char *role_name, List<LEX_USER> &list, bool revoke, bool check_priv);
+
 int fill_schema_user_privileges(THD *thd, TABLE_LIST *tables, Item *cond);
 int fill_schema_schema_privileges(THD *thd, TABLE_LIST *tables, Item *cond);
 int fill_schema_table_privileges(THD *thd, TABLE_LIST *tables, Item *cond);

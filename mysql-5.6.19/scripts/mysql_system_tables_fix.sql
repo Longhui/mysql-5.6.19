@@ -231,9 +231,6 @@ ALTER TABLE slow_log
   MODIFY lock_time TIME NOT NULL,
   MODIFY rows_sent INTEGER NOT NULL,
   MODIFY rows_examined INTEGER NOT NULL,
-  ADD logical_reads INTEGER DEFAULT 0 NOT NULL AFTER rows_examined, ADD physical_reads INTEGER DEFAULT 0 NOT NULL AFTER logical_reads,
-  MODIFY logical_reads INTEGER NOT NULL,
-  MODIFY physical_reads INTEGER NOT NULL,
   MODIFY db VARCHAR(512) NOT NULL,
   MODIFY last_insert_id INTEGER NOT NULL,
   MODIFY insert_id INTEGER NOT NULL,
@@ -594,6 +591,18 @@ ALTER TABLE user MODIFY Create_tablespace_priv enum('N','Y') COLLATE utf8_genera
 
 UPDATE user SET Create_tablespace_priv = Super_priv WHERE @hadCreateTablespacePriv = 0;
 
+#
+# user.Profile_priv
+#
+
+SET @hadProfilePriv := 0;
+SELECT @hadProfilePriv :=1 FROM user WHERE Profile_priv LIKE '%';
+
+ALTER TABLE user ADD Profile_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER Create_tablespace_priv;
+ALTER TABLE user MODIFY Profile_priv enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER Create_tablespace_priv;
+
+UPDATE user SET profile_priv = Super_priv WHERE @hadProfilePriv = 0;
+
 --
 -- Unlike 'performance_schema', the 'mysql' database is reserved already,
 -- so no user procedure is supposed to be there.
@@ -620,6 +629,10 @@ drop procedure mysql.die;
 ALTER TABLE user ADD plugin char(64) DEFAULT '',  ADD authentication_string TEXT;
 ALTER TABLE user MODIFY plugin char(64) DEFAULT '';
 ALTER TABLE user MODIFY authentication_string TEXT;
+
+ALTER TABLE user ADD profile_name char(64) DEFAULT '' NOT NULL, ADD role_name char(64) DEFAULT '' NOT NULL;
+ALTER TABLE user MODIFY profile_name char(64) DEFAULT '' NOT NULL;
+ALTER TABLE user MODIFY role_name char(64) DEFAULT '' NOT NULL;
 
 -- establish if the field is already there.
 SET @hadPasswordExpired:=0;
