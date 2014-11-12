@@ -1540,9 +1540,9 @@ bool mysql_change_db(THD *thd, const LEX_STRING *new_db_name, bool force_switch)
   db_access=
     test_all_bits(sctx->master_access, DB_ACLS) ?
     DB_ACLS :
-    acl_get(sctx->get_host()->ptr(),
+    acl_get(sctx->use_role ? sctx->role_host : sctx->get_host()->ptr(),
             sctx->get_ip()->ptr(),
-            sctx->priv_user,
+            sctx->use_role ? sctx->priv_role : sctx->priv_user,
             new_db_file_name.str,
             FALSE) | sctx->master_access;
 

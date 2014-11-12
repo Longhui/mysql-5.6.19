@@ -53,6 +53,7 @@ Created 11/5/1995 Heikki Tuuri
 #include "page0zip.h"
 #include "srv0mon.h"
 #include "buf0checksum.h"
+#include "resource_prof.h"
 
 /*
 		IMPLEMENTATION OF THE BUFFER POOL
@@ -241,6 +242,8 @@ in a tablespace) have recently been referenced, we may predict
 that the whole area may be needed in the near future, and issue
 the read requests for the whole area.
 */
+
+_resource_profiler_func_ptr resource_profiler_func_ptr;
 
 #ifndef UNIV_HOTBACKUP
 /** Value in microseconds */
@@ -2880,6 +2883,7 @@ got_block:
 	ut_ad(!rw_lock_own(hash_lock, RW_LOCK_SHARED));
 #endif /* UNIV_SYNC_DEBUG */
 
+  resource_profiler_func_ptr(1);
 	ut_ad(buf_block_get_state(fix_block) == BUF_BLOCK_FILE_PAGE);
 
 #if UNIV_WORD_SIZE == 4
@@ -3156,6 +3160,7 @@ buf_page_optimistic_get(
 			    buf_block_get_page_no(block)) == 0);
 #endif
 	buf_pool = buf_pool_from_block(block);
+  resource_profiler_func_ptr(1);
 	buf_pool->stat.n_page_gets++;
 
 	return(TRUE);
@@ -3259,6 +3264,7 @@ buf_page_get_known_nowait(
 	     || (ibuf_count_get(buf_block_get_space(block),
 				buf_block_get_page_no(block)) == 0));
 #endif
+  resource_profiler_func_ptr(1);
 	buf_pool->stat.n_page_gets++;
 
 	return(TRUE);

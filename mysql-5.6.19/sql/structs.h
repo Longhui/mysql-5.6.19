@@ -182,6 +182,34 @@ typedef struct	st_lex_user {
   bool uses_identified_by_password_clause;
 } LEX_USER;
 
+typedef struct curr_resources
+{
+  char *user;
+  char *host;
+  uint len;
+  ulonglong curr_cpu_times;
+  ulonglong curr_io_reads;
+}CURR_RESOURCES;
+
+typedef enum profile_status
+{
+  NORMAL,
+  DELETED,
+  MODIFIED,
+  BANDING
+}PROFILE_STATUS;
+
+typedef struct profile_resources
+{
+  char    *profile_name;
+  uint    len;
+  PROFILE_STATUS  status;
+  ulonglong cpu_times;
+  ulonglong io_reads;
+  ulonglong cpu_times_per_trx;
+  ulonglong io_reads_per_trx;
+  size_t mem_size;
+}PROFILE_RESOURCES;
 /*
   This structure specifies the maximum amount of resources which
   can be consumed by each account. Zero value of a member means
@@ -199,12 +227,18 @@ typedef struct user_resources {
   uint conn_per_hour;
   /* Maximum number of concurrent connections. */
   uint user_conn;
+
+  ulonglong curr_cpu_times;
+  ulonglong curr_io_reads;
+
+  PROFILE_RESOURCES *profile;
   /*
      Values of this enum and specified_limits member are used by the
      parser to store which user limits were specified in GRANT statement.
   */
   enum {QUERIES_PER_HOUR= 1, UPDATES_PER_HOUR= 2, CONNECTIONS_PER_HOUR= 4,
-        USER_CONNECTIONS= 8};
+        USER_CONNECTIONS= 8, CPU_TIMES = 16, IO_READS = 32, 
+        CPU_TIMES_PER_TRX = 64, IO_READS_PER_TRX = 128};
   uint specified_limits;
 } USER_RESOURCES;
 
@@ -237,6 +271,8 @@ typedef struct  user_conn {
      per hour and total number of statements per hour for this account.
   */
   uint conn_per_hour, updates, questions;
+
+  CURR_RESOURCES *curr_resources;
   /* Maximum amount of resources which account is allowed to consume. */
   USER_RESOURCES user_resources;
 } USER_CONN;

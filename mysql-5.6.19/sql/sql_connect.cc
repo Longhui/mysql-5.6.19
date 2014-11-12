@@ -63,7 +63,9 @@ using std::max;
 */
 
 #ifndef NO_EMBEDDED_ACCESS_CHECKS
+HASH hash_curr_resources;
 static HASH hash_user_connections;
+static HASH hash_profile_resources;
 
 int get_or_create_user_conn(THD *thd, const char *user,
                             const char *host,
@@ -99,6 +101,8 @@ int get_or_create_user_conn(THD *thd, const char *user,
     uc->connections= uc->questions= uc->updates= uc->conn_per_hour= 0;
     uc->user_resources= *mqh;
     uc->reset_utime= thd->thr_create_utime;
+    uc->curr_resources = create_curr_resources(user, host, mqh->curr_cpu_times, mqh->curr_io_reads);
+    uc->user_resources.profile = mqh->profile;
     if (my_hash_insert(&hash_user_connections, (uchar*) uc))
     {
       /* The only possible error is out of memory, MY_WME sets an error. */
@@ -224,6 +228,18 @@ void decrease_user_connections(USER_CONN *uc)
   DBUG_VOID_RETURN;
 }
 
+void decrease_curr_resources(CURR_RESOURCES *cr, uint connections)
+{
+  DBUG_ENTER("decrease_curr_resources");
+  mysql_mutex_lock(&LOCK_curr_resources);
+  if (connections == 1 && cr != NULL)
+  {
+    (void) my_hash_delete(&hash_curr_resources, (uchar*)cr);
+  }
+  mysql_mutex_unlock(&LOCK_curr_resources);
+  DBUG_VOID_RETURN;
+}
+
 /*
    Decrements user connections count from the USER_CONN held by THD
    And removes USER_CONN from the hash if no body else is using it.
@@ -242,6 +258,11 @@ void release_user_connection(THD *thd)
     mysql_mutex_lock(&LOCK_user_conn);
     DBUG_ASSERT(uc->connections > 0);
     thd->decrement_user_connections_counter();
+    if (opt_profiler_record == 1)
+    {
+      acl_profiler_record(thd);
+      decrease_curr_resources(uc->curr_resources, uc->connections);
+    }
     if (!uc->connections && !mqh_used)
     {
       /* Last connection for user; Delete it */
@@ -349,6 +370,32 @@ extern "C" void free_user(struct user_conn *uc)
   my_free(uc);
 }
 
+extern "C" uchar *get_key_curr_resources(struct curr_resources *buff, size_t *length,
+            my_bool not_used __attribute__((UNUSED)))
+{
+  *length = buff->len;
+  return (uchar*)buff->user;
+}
+
+extern "C" void free_curr_resources(struct curr_resources *cr)
+{
+  my_free(cr);
+  cr = NULL;
+}
+
+extern "C" uchar *get_key_profile_resources(struct profile_resources *profile, size_t *length,
+            my_bool not_used __attribute__((unused)))
+{
+  *length = profile->len;
+  return (uchar*)profile->profile_name;
+}
+
+extern "C" void free_profile_resources(struct profile_resources *profile)
+{
+  my_free(profile);
+  profile = NULL;
+}
+
 
 void init_max_user_conn(void)
 {
@@ -360,6 +407,35 @@ void init_max_user_conn(void)
 #endif
 }
 
+void init_max_profile_resources(void)
+{
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  (void)my_hash_init(&hash_profile_resources, system_charset_info,100,
+    0, 0, (my_hash_get_key)get_key_profile_resources, (my_hash_free_key)free_profile_resources,0);
+#endif
+}
+
+void free_max_curr_resources(void)
+{
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  my_hash_free(&hash_curr_resources);
+#endif
+}
+
+void init_max_curr_resources(void)
+{
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  (void)my_hash_init(&hash_curr_resources, system_charset_info,max_connections,
+    0, 0, (my_hash_get_key)get_key_curr_resources, (my_hash_free_key)free_curr_resources,0);
+#endif
+}
+
+void free_max_profile_resources(void)
+{
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+  my_hash_free(&hash_profile_resources);
+#endif
+}
 
 void free_max_user_conn(void)
 {
@@ -367,7 +443,6 @@ void free_max_user_conn(void)
   my_hash_free(&hash_user_connections);
 #endif /* NO_EMBEDDED_ACCESS_CHECKS */
 }
-
 
 void reset_mqh(LEX_USER *lu, bool get_them= 0)
 {
@@ -999,3 +1074,138 @@ end_thread:
   }
 }
 #endif /* EMBEDDED_LIBRARY */
+
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
+void delete_profile_resources(PROFILE_RESOURCES *profile)
+{
+  mysql_mutex_lock(&LOCK_profile_resources);
+  (void) my_hash_delete(&hash_profile_resources, (uchar*)profile);
+  mysql_mutex_unlock(&LOCK_profile_resources);
+}
+
+void profile_resources_reset(void)
+{
+  mysql_mutex_lock(&LOCK_profile_resources);
+  my_hash_reset(&hash_profile_resources);
+  mysql_mutex_unlock(&LOCK_profile_resources);
+}
+
+struct profile_resources *
+search_profile_resources(const char *profile_name)
+{
+  size_t name_len;
+  struct profile_resources *profile;
+  if (profile_name == NULL) return NULL;
+  name_len = strlen(profile_name);
+  mysql_mutex_lock(&LOCK_profile_resources);
+  profile = (struct profile_resources *) my_hash_search(&hash_profile_resources,
+     (uchar*)profile_name, name_len);
+  mysql_mutex_unlock(&LOCK_profile_resources);
+  return profile;
+}
+
+struct profile_resources *
+create_profile_resources(const char *profile_name, ulonglong cpu_times, 
+         ulonglong io_reads, ulonglong cpu_times_per_trx, ulonglong io_reads_per_trx, size_t mem_size)
+{
+  size_t name_len;
+  struct profile_resources *profile;
+  DBUG_ASSERT(profile_name != NULL);
+  name_len = strlen(profile_name);
+  mysql_mutex_lock(&LOCK_profile_resources);
+  if (!(profile = (struct profile_resources *) my_hash_search(&hash_profile_resources, 
+    (uchar*)profile_name, name_len)))
+  {
+    if (!(profile = ((struct profile_resources*)my_malloc(sizeof(struct profile_resources) + name_len + 1, MYF(MY_WME)))))
+    {
+      profile = NULL;
+      goto end;
+    }
+    profile->profile_name = (char *)(profile + 1);
+    memcpy(profile->profile_name, profile_name, name_len + 1);
+    profile->len = name_len;
+    profile->status = NORMAL;
+    profile->cpu_times = cpu_times;
+    profile->io_reads = io_reads;
+    profile->cpu_times_per_trx = cpu_times_per_trx;
+    profile->io_reads_per_trx = io_reads_per_trx;
+    profile->mem_size = mem_size;
+    if (my_hash_insert(&hash_profile_resources, (uchar*)profile))
+    {
+      my_free(profile);
+      profile = NULL;
+      goto end;
+    }
+  }
+end:
+  mysql_mutex_unlock(&LOCK_profile_resources);
+  return profile;
+}
+
+void delete_curr_resources(CURR_RESOURCES *cr)
+{
+  mysql_mutex_lock(&LOCK_curr_resources);
+  (void) my_hash_delete(&hash_curr_resources, (uchar*) cr);
+  mysql_mutex_unlock(&LOCK_curr_resources);
+}
+
+struct curr_resources *
+search_curr_resources(const char *user, const char *host)
+{
+  size_t temp_len, user_len;
+  char temp_user[USER_HOST_BUFF_SIZE];
+  struct curr_resources *cr = NULL;
+
+  if (user == 0)
+    user = "";
+  if (host == 0)
+    host = "";
+  user_len = strlen(user);
+  temp_len = (strmov(strmov(temp_user, user)+1, host) - temp_user) + 1;
+  mysql_mutex_lock(&LOCK_curr_resources);
+  cr = (struct curr_resources *) my_hash_search(&hash_curr_resources,(uchar*)temp_user, temp_len);
+  mysql_mutex_unlock(&LOCK_curr_resources);
+  return cr;
+}
+
+struct curr_resources *
+  create_curr_resources(const char *user, const char *host,
+  ulonglong curr_cpu_times, ulonglong curr_io_reads)
+{
+  size_t temp_len, user_len;
+  char temp_user[USER_HOST_BUFF_SIZE];
+  struct curr_resources *cr;
+
+  DBUG_ASSERT(user != 0);
+  DBUG_ASSERT(host != 0);
+
+  user_len = strlen(user);
+  temp_len = (strmov(strmov(temp_user, user)+1, host) - temp_user) + 1;
+  mysql_mutex_lock(&LOCK_curr_resources);
+  if (!(cr = (struct curr_resources *) my_hash_search(&hash_curr_resources,
+    (uchar*)temp_user, temp_len)))
+  {
+    if (!(cr = ((struct curr_resources*)
+      my_malloc(sizeof(struct curr_resources) + temp_len + 1,MYF(MY_WME)))))
+    {
+      cr = NULL;
+      goto end;
+    }
+    cr->user = (char*)(cr + 1);
+    memcpy(cr->user, temp_user, temp_len + 1);
+    cr->host = cr->user + user_len + 1;
+    cr->len = temp_len;
+    cr->curr_cpu_times = curr_cpu_times;
+    cr->curr_io_reads = curr_io_reads;
+    if(my_hash_insert(&hash_curr_resources, (uchar*)cr))
+    {
+      my_free(cr);
+      cr = NULL;
+      goto end;
+    }
+  }
+end:
+  mysql_mutex_unlock(&LOCK_curr_resources);
+  return cr;
+}
+#endif

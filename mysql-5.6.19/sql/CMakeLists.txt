@@ -137,6 +137,7 @@ SET(SQL_SHARED_SOURCES
   sql_plugin.cc
   sql_prepare.cc
   sql_profile.cc
+	resource_profiler.cc
   sql_reload.cc
   sql_rename.cc
   sql_resolver.cc

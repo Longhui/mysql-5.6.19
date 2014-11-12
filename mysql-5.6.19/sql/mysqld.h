@@ -97,7 +97,8 @@ extern CHARSET_INFO *character_set_filesystem;
 extern MY_BITMAP temp_pool;
 extern bool opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
-extern my_bool opt_log, opt_slow_log, opt_log_raw;
+extern my_bool opt_log, opt_slow_log, opt_log_raw, opt_use_profile_limitted, opt_use_profile_repl;
+extern uint opt_profiler_record;
 extern my_bool opt_backup_history_log;
 extern my_bool opt_backup_progress_log;
 extern ulonglong log_output_options;
@@ -324,7 +325,8 @@ extern PSI_mutex_key
   key_LOCK_slave_net_timeout,
   key_LOCK_server_started, key_LOCK_status,
   key_LOCK_table_share, key_LOCK_thd_data,
-  key_LOCK_user_conn, key_LOCK_uuid_generator, key_LOG_LOCK_log,
+  key_LOCK_user_conn, key_LOCK_curr_resources, key_LOCK_profile_resources,
+  key_LOCK_uuid_generator, key_LOG_LOCK_log,
   key_master_info_data_lock, key_master_info_run_lock,
   key_master_info_sleep_lock,
   key_mutex_slave_reporting_capability_err_lock, key_relay_log_info_data_lock,
@@ -348,7 +350,7 @@ extern PSI_mutex_key key_LOCK_sql_rand;
 extern PSI_mutex_key key_gtid_ensure_index_mutex;
 extern PSI_mutex_key key_LOCK_thread_created;
 
-extern PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,
+extern PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,key_rwlock_LOCK_profile,
   key_rwlock_LOCK_sys_init_connect, key_rwlock_LOCK_sys_init_slave,
   key_rwlock_LOCK_system_variables_hash, key_rwlock_query_cache_query_lock,
   key_rwlock_global_sid_lock;
@@ -572,7 +574,7 @@ extern mysql_mutex_t
        LOCK_error_log, LOCK_delayed_insert, LOCK_uuid_generator,
        LOCK_delayed_status, LOCK_delayed_create, LOCK_crypt, LOCK_timezone,
        LOCK_slave_list, LOCK_active_mi, LOCK_manager,
-       LOCK_global_system_variables, LOCK_user_conn, LOCK_log_throttle_qni,
+       LOCK_global_system_variables, LOCK_user_conn, LOCK_log_throttle_qni, LOCK_curr_resources, LOCK_profile_resources,
        LOCK_prepared_stmt_count, LOCK_error_messages, LOCK_connection_count,
        LOCK_sql_slave_skip_counter, LOCK_slave_net_timeout;
 #ifdef HAVE_OPENSSL
@@ -581,6 +583,7 @@ extern mysql_mutex_t LOCK_des_key_file;
 extern mysql_mutex_t LOCK_server_started;
 extern mysql_cond_t COND_server_started;
 extern mysql_rwlock_t LOCK_grant, LOCK_sys_init_connect, LOCK_sys_init_slave;
+extern mysql_rwlock_t LOCK_profile;
 extern mysql_rwlock_t LOCK_system_variables_hash;
 extern mysql_cond_t COND_manager;
 extern int32 thread_running;

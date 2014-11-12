@@ -107,6 +107,7 @@
 #include "sp_rcontext.h"
 #include "sp_cache.h"
 #include "sql_reload.h"  // reload_acl_and_cache
+#include "resource_profiler.h"
 
 #ifdef HAVE_POLL_H
 #include <poll.h>
@@ -386,6 +387,8 @@ static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 bool opt_bin_log, opt_ignore_builtin_innodb= 0;
 my_bool opt_log, opt_slow_log, opt_log_raw;
+my_bool opt_use_profile_limitted, opt_use_profile_repl;
+uint opt_profiler_record;
 ulonglong log_output_options;
 my_bool opt_log_queries_not_using_indexes= 0;
 ulong opt_log_throttle_queries_not_using_indexes= 0;
@@ -715,7 +718,7 @@ mysql_mutex_t
   LOCK_delayed_insert, LOCK_delayed_status, LOCK_delayed_create,
   LOCK_crypt,
   LOCK_global_system_variables,
-  LOCK_user_conn, LOCK_slave_list, LOCK_active_mi,
+  LOCK_user_conn, LOCK_curr_resources, LOCK_profile_resources, LOCK_slave_list, LOCK_active_mi,
   LOCK_connection_count, LOCK_error_messages;
 mysql_mutex_t LOCK_sql_rand;
 
@@ -741,6 +744,7 @@ mysql_mutex_t LOCK_log_throttle_qni;
 mysql_mutex_t LOCK_des_key_file;
 #endif
 mysql_rwlock_t LOCK_grant, LOCK_sys_init_connect, LOCK_sys_init_slave;
+mysql_rwlock_t LOCK_profile;
 mysql_rwlock_t LOCK_system_variables_hash;
 mysql_cond_t COND_thread_count;
 pthread_t signal_thread;
@@ -1878,6 +1882,8 @@ void clean_up(bool print_message)
   my_free(opt_bin_logname);
   bitmap_free(&temp_pool);
   free_max_user_conn();
+  free_max_curr_resources();
+  free_max_profile_resources();
 #ifdef HAVE_REPLICATION
   end_slave_list();
 #endif
@@ -1962,6 +1968,7 @@ static void wait_for_signal_thread_to_end()
 
 static void clean_up_mutexes()
 {
+  mysql_rwlock_destroy(&LOCK_profile);
   mysql_rwlock_destroy(&LOCK_grant);
   mysql_mutex_destroy(&LOCK_thread_created);
   mysql_mutex_destroy(&LOCK_thread_count);
@@ -3429,9 +3436,11 @@ SHOW_VAR com_status_vars[]= {
   {"alter_event",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_EVENT]), SHOW_LONG_STATUS},
   {"alter_function",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_FUNCTION]), SHOW_LONG_STATUS},
   {"alter_procedure",      (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_PROCEDURE]), SHOW_LONG_STATUS},
+  {"alter_profile",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_PROFILE]), SHOW_LONG_STATUS},
   {"alter_server",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_SERVER]), SHOW_LONG_STATUS},
   {"alter_table",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_TABLE]), SHOW_LONG_STATUS},
   {"alter_tablespace",     (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_TABLESPACE]), SHOW_LONG_STATUS},
+  {"alter_user_profile",   (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_USER_PROFILE]), SHOW_LONG_STATUS},
   {"alter_user",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ALTER_USER]), SHOW_LONG_STATUS},
   {"analyze",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ANALYZE]), SHOW_LONG_STATUS},
   {"begin",                (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_BEGIN]), SHOW_LONG_STATUS},
@@ -3447,6 +3456,8 @@ SHOW_VAR com_status_vars[]= {
   {"create_function",      (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_SPFUNCTION]), SHOW_LONG_STATUS},
   {"create_index",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_INDEX]), SHOW_LONG_STATUS},
   {"create_procedure",     (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_PROCEDURE]), SHOW_LONG_STATUS},
+  {"create_profile",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_PROFILE]), SHOW_LONG_STATUS},
+  {"create_role",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_ROLE]), SHOW_LONG_STATUS},
   {"create_server",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_SERVER]), SHOW_LONG_STATUS},
   {"create_table",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_TABLE]), SHOW_LONG_STATUS},
   {"create_trigger",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_CREATE_TRIGGER]), SHOW_LONG_STATUS},
@@ -3462,6 +3473,8 @@ SHOW_VAR com_status_vars[]= {
   {"drop_function",        (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_FUNCTION]), SHOW_LONG_STATUS},
   {"drop_index",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_INDEX]), SHOW_LONG_STATUS},
   {"drop_procedure",       (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_PROCEDURE]), SHOW_LONG_STATUS},
+  {"drop_profile",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_PROFILE]), SHOW_LONG_STATUS},
+  {"drop_role",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_ROLE]), SHOW_LONG_STATUS},
   {"drop_server",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_SERVER]), SHOW_LONG_STATUS},
   {"drop_table",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_TABLE]), SHOW_LONG_STATUS},
   {"drop_trigger",         (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_DROP_TRIGGER]), SHOW_LONG_STATUS},
@@ -3472,6 +3485,7 @@ SHOW_VAR com_status_vars[]= {
   {"flush",                (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_FLUSH]), SHOW_LONG_STATUS},
   {"get_diagnostics",      (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_GET_DIAGNOSTICS]), SHOW_LONG_STATUS},
   {"grant",                (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_GRANT]), SHOW_LONG_STATUS},
+  {"grant_role",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_GRANT_ROLE]), SHOW_LONG_STATUS},
   {"ha_close",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HA_CLOSE]), SHOW_LONG_STATUS},
   {"ha_open",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HA_OPEN]), SHOW_LONG_STATUS},
   {"ha_read",              (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_HA_READ]), SHOW_LONG_STATUS},
@@ -3497,6 +3511,7 @@ SHOW_VAR com_status_vars[]= {
   {"resignal",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_RESIGNAL]), SHOW_LONG_STATUS},
   {"revoke",               (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REVOKE]), SHOW_LONG_STATUS},
   {"revoke_all",           (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REVOKE_ALL]), SHOW_LONG_STATUS},
+  {"revoke_role",          (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_REVOKE_ROLE]), SHOW_LONG_STATUS},
   {"rollback",             (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ROLLBACK]), SHOW_LONG_STATUS},
   {"rollback_to_savepoint",(char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_ROLLBACK_TO_SAVEPOINT]), SHOW_LONG_STATUS},
   {"savepoint",            (char*) offsetof(STATUS_VAR, com_stat[(uint) SQLCOM_SAVEPOINT]), SHOW_LONG_STATUS},
@@ -4192,6 +4207,8 @@ static int init_thread_environment()
                    &LOCK_manager, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_crypt, &LOCK_crypt, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_user_conn, &LOCK_user_conn, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(key_LOCK_curr_resources, &LOCK_curr_resources, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(key_LOCK_profile_resources, &LOCK_profile_resources, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_active_mi, &LOCK_active_mi, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(key_LOCK_global_system_variables,
                    &LOCK_global_system_variables, MY_MUTEX_INIT_FAST);
@@ -4231,6 +4248,7 @@ static int init_thread_environment()
   mysql_rwlock_init(key_rwlock_LOCK_sys_init_connect, &LOCK_sys_init_connect);
   mysql_rwlock_init(key_rwlock_LOCK_sys_init_slave, &LOCK_sys_init_slave);
   mysql_rwlock_init(key_rwlock_LOCK_grant, &LOCK_grant);
+  mysql_rwlock_init(key_rwlock_LOCK_profile, &LOCK_profile);
   mysql_cond_init(key_COND_thread_count, &COND_thread_count, NULL);
   mysql_cond_init(key_COND_thread_cache, &COND_thread_cache, NULL);
   mysql_cond_init(key_COND_flush_thread_cache, &COND_flush_thread_cache, NULL);
@@ -5038,6 +5056,8 @@ a file name for --log-bin-index option", opt_binlog_index_name);
   ft_init_stopwords();
 
   init_max_user_conn();
+  init_max_curr_resources();
+  init_max_profile_resources();
   init_update_queries();
   DBUG_RETURN(0);
 }
@@ -7380,6 +7400,30 @@ static int show_starttime(THD *thd, SHOW_VAR *var, char *buff)
   return 0;
 }
 
+static int show_cpu_times(THD *thd, SHOW_VAR *var, char *buff)
+{
+  var->type = SHOW_CHAR;
+  const USER_CONN *uc = thd->get_user_connect();
+  if (uc && uc->user_resources.profile)
+    sprintf(buff, "%llu/%llu", uc->curr_resources->curr_cpu_times, uc->user_resources.profile->cpu_times);
+  else
+    sprintf(buff, "%d/%d", 0, 0);
+  var->value = buff;
+  return 0;
+}
+
+static int show_io_used(THD *thd, SHOW_VAR *var, char *buff)
+{
+  var->type = SHOW_CHAR;
+  const USER_CONN *uc = thd->get_user_connect();
+  if(uc && uc->user_resources.profile)
+    sprintf(buff,"%llu/%llu",uc->curr_resources->curr_io_reads,uc->user_resources.profile->io_reads);
+  else
+    sprintf(buff,"%u/%u",0,0);
+  var->value = buff;
+  return 0;
+}
+
 #ifdef ENABLED_PROFILING
 static int show_flushstatustime(THD *thd, SHOW_VAR *var, char *buff)
 {
@@ -8025,6 +8069,8 @@ SHOW_VAR status_vars[]= {
 #ifdef ENABLED_PROFILING
   {"Uptime_since_flush_status",(char*) &show_flushstatustime,   SHOW_FUNC},
 #endif
+  {"Threads_cpu_times_used",   (char*) &show_cpu_times,			  SHOW_FUNC},
+  {"Threads_io_used", 		 (char*) &show_io_used, 		  SHOW_FUNC},
   {NullS, NullS, SHOW_LONG}
 };
 
@@ -9357,7 +9403,7 @@ PSI_mutex_key
   key_LOCK_slave_net_timeout,
   key_LOCK_server_started, key_LOCK_status,
   key_LOCK_system_variables_hash, key_LOCK_table_share, key_LOCK_thd_data,
-  key_LOCK_user_conn, key_LOCK_uuid_generator, key_LOG_LOCK_log,
+  key_LOCK_user_conn,key_LOCK_curr_resources ,key_LOCK_profile_resources, key_LOCK_uuid_generator, key_LOG_LOCK_log,
   key_master_info_data_lock, key_master_info_run_lock,
   key_master_info_sleep_lock,
   key_mutex_slave_reporting_capability_err_lock, key_relay_log_info_data_lock,
@@ -9433,6 +9479,8 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_LOCK_table_share, "LOCK_table_share", PSI_FLAG_GLOBAL},
   { &key_LOCK_thd_data, "THD::LOCK_thd_data", 0},
   { &key_LOCK_user_conn, "LOCK_user_conn", PSI_FLAG_GLOBAL},
+  { &key_LOCK_curr_resources, "LOCK_curr_resources", PSI_FLAG_GLOBAL},
+  { &key_LOCK_profile_resources, "LOCK_profile_resources", PSI_FLAG_GLOBAL},
   { &key_LOCK_uuid_generator, "LOCK_uuid_generator", PSI_FLAG_GLOBAL},
   { &key_LOCK_sql_rand, "LOCK_sql_rand", PSI_FLAG_GLOBAL},
   { &key_LOG_LOCK_log, "LOG::LOCK_log", 0},
@@ -9457,7 +9505,7 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_LOCK_thread_created, "LOCK_thread_created", PSI_FLAG_GLOBAL }
 };
 
-PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,
+PSI_rwlock_key key_rwlock_LOCK_grant, key_rwlock_LOCK_logger,key_rwlock_LOCK_profile,
   key_rwlock_LOCK_sys_init_connect, key_rwlock_LOCK_sys_init_slave,
   key_rwlock_LOCK_system_variables_hash, key_rwlock_query_cache_query_lock,
   key_rwlock_global_sid_lock;
@@ -9479,6 +9527,7 @@ static PSI_rwlock_info all_server_rwlocks[]=
   { &key_rwlock_Binlog_relay_IO_delegate_lock, "Binlog_relay_IO_delegate::lock", PSI_FLAG_GLOBAL},
 #endif
   { &key_rwlock_LOCK_grant, "LOCK_grant", PSI_FLAG_GLOBAL},
+  { &key_rwlock_LOCK_profile, "LOCK_profile", PSI_FLAG_GLOBAL},
   { &key_rwlock_LOCK_logger, "LOGGER::LOCK_logger", 0},
   { &key_rwlock_LOCK_sys_init_connect, "LOCK_sys_init_connect", PSI_FLAG_GLOBAL},
   { &key_rwlock_LOCK_sys_init_slave, "LOCK_sys_init_slave", PSI_FLAG_GLOBAL},

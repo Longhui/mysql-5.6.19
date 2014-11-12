@@ -153,6 +153,9 @@ enum enum_server_command
 #define REFRESH_DES_KEY_FILE	0x40000L
 #define REFRESH_USER_RESOURCES	0x80000L
 #define REFRESH_FOR_EXPORT      0x100000L /* FLUSH TABLES ... FOR EXPORT */
+#define REFRESH_PROFILE_IO      0x200000L
+#define REFRESH_PROFILE_CPU     0x400000L
+#define REFRESH_PROFILE_ALL     0x800000L
 
 #define CLIENT_LONG_PASSWORD	1	/* new more secure passwords */
 #define CLIENT_FOUND_ROWS	2	/* Found instead of affected rows */

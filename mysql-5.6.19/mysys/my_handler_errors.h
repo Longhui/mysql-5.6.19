@@ -94,7 +94,16 @@ static const char *handler_error_messages[]=
   "FTS query exceeds result cache memory limit",
   "Temporary file write failure",
   "Operation not allowed when innodb_forced_recovery > 0",
-  "Too many words in a FTS phrase or proximity search"
+  "Too many words in a FTS phrase or proximity search",
+  "User's CPU resource is exhausted",
+  "User's IO resource is exhausted",
+  "Current trx CPU times is more than the user limited, the trx will be rollback",
+  "Current trx IO reads is more than the user limited, the trx will be rollback",
+  "Failed to access the user_profiler table with no super privilege",
+  "Profile already exists",
+  "Profile doesn't exist",
+  "Role doesn't exist",
+  "Grant role to user with check option error"
 };
 
 extern void my_handler_error_register(void);

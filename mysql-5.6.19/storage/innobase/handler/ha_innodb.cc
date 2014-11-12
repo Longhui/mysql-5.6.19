@@ -99,6 +99,7 @@ enum_tx_isolation thd_get_trx_isolation(const THD* thd);
 
 #include "ha_innodb.h"
 #include "i_s.h"
+#include "resource_prof.h"
 
 # ifndef MYSQL_PLUGIN_IMPORT
 #  define MYSQL_PLUGIN_IMPORT /* nothing */
@@ -2815,11 +2816,11 @@ innobase_init(
 	innobase_hton->flush_logs = innobase_flush_logs;
 	innobase_hton->show_status = innobase_show_status;
 	innobase_hton->flags = HTON_SUPPORTS_EXTENDED_KEYS;
-
 	innobase_hton->release_temporary_latches =
 		innobase_release_temporary_latches;
 
 	innobase_hton->data = &innodb_api_cb;
+  resource_profiler_func_ptr = innobase_hton->resource_profiler_ptr;
 
 	ut_a(DATA_MYSQL_TRUE_VARCHAR == (ulint)MYSQL_TYPE_VARCHAR);
 

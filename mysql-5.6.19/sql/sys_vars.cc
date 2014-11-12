@@ -1539,6 +1539,24 @@ static Sys_var_mybool Sys_log_queries_not_using_indexes(
        GLOBAL_VAR(opt_log_queries_not_using_indexes),
        CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
+static Sys_var_uint Sys_current_profiler_record(
+       "current_profiler_record",
+       "record the current profiler info into the user_profiler",
+       GLOBAL_VAR(opt_profiler_record), CMD_LINE(OPT_ARG),
+       VALID_RANGE(0,2), DEFAULT(0), BLOCK_SIZE(1));
+
+static Sys_var_mybool Sys_use_profile_limited(
+       "use_profile_limitted",
+       "use the profile to limit the user resource",
+       GLOBAL_VAR(opt_use_profile_limitted), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0));
+
+static Sys_var_mybool Sys_use_profile_repl(
+       "use_profile_repl",
+       "use profile in slave when do the replication",
+       GLOBAL_VAR(opt_use_profile_repl), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0));
+
 static Sys_var_mybool Sys_log_slow_admin_statements(
        "log_slow_admin_statements",
        "Log slow OPTIMIZE, ANALYZE, ALTER and other administrative statements to "
