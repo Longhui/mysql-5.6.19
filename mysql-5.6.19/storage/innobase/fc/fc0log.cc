@@ -29,15 +29,16 @@ fc_open_or_create_file(void)
 /*==========================*/
 {	
 	ibool	ret;
-	ulint	size;
-	ulint	size_high;
-	ulint	low32;
-	ulint	high32;
+//	ulint	size;
+//	ulint	size_high;
+//	ulint	low32;
+//	ulint	high32;
+	os_offset_t	size;
 	os_file_t file;
-	ulint flash_cache_size = srv_flash_cache_size / UNIV_PAGE_SIZE;
+	os_offset_t flash_cache_size = (os_offset_t)srv_flash_cache_size;
 	
-	low32 = (0xFFFFFFFFUL & (flash_cache_size << UNIV_PAGE_SIZE_SHIFT));
-	high32 = (flash_cache_size >> (32 - UNIV_PAGE_SIZE_SHIFT));
+//	low32 = (0xFFFFFFFFUL & (flash_cache_size << UNIV_PAGE_SIZE_SHIFT));
+//	high32 = (flash_cache_size >> (32 - UNIV_PAGE_SIZE_SHIFT));
 	
 	file = os_file_create(innodb_flash_cache_file_key, srv_flash_cache_file,
 		OS_FILE_CREATE, OS_FILE_NORMAL, OS_LOG_FILE, &ret);
@@ -63,13 +64,14 @@ fc_open_or_create_file(void)
 			fprintf(stderr,	" InnoDB: Error in opening %s\n", srv_flash_cache_file);
 			return(DB_ERROR);
 		}
-		ret = os_file_get_size(file, &size, &size_high);
-		if (high32 > size_high || (high32 == size_high && low32 > size)) {
+		//ret = os_file_get_size(file, &size, &size_high);
+		size = os_file_get_size(file);
+		if (size < flash_cache_size) {
 			ut_print_timestamp(stderr);
 			fprintf(stderr,
-				" InnoDB: Error: L2 Cache file %s is of smaller size %lu %lu bytes\n"
-				"InnoDB: than specified in the .cnf file %lu %lu bytes!\n",
-				srv_flash_cache_file, (ulong)size_high, (ulong)size, (ulong)low32, (ulong)high32);
+				" InnoDB: Error: L2 Cache file %s is of smaller size %lu bytes\n"
+				"InnoDB: than specified in the .cnf file %lu bytes!\n",
+				srv_flash_cache_file, (ulong)size, (ulong)flash_cache_size);
 			return(DB_ERROR);
 		}
 	} else {
@@ -78,11 +80,11 @@ fc_open_or_create_file(void)
 				srv_flash_cache_file);
 		
 		fprintf(stderr, "InnoDB: Setting L2 Cache file %s size to %lu MB\n",
-				srv_flash_cache_file, (ulong) flash_cache_size >> (20 - UNIV_PAGE_SIZE_SHIFT));
+				srv_flash_cache_file, (ulong)flash_cache_size >> 20);
 		
 		fprintf(stderr, "InnoDB: Database physically writes the file full: wait...\n");
 		
-		ret = os_file_set_size(srv_flash_cache_file, file, low32, high32);
+		ret = os_file_set_size(srv_flash_cache_file, file, flash_cache_size);
 		if (!ret) {
 			ut_print_timestamp(stderr);
 			fprintf(stderr, " InnoDB: Error in creating %s: probably out of disk space\n",
@@ -173,7 +175,7 @@ fc_log_create(void)
 			fprintf(stderr," InnoDB [Error]: Can't open L2 Cache log: %lu.\n", ret);
 			ut_error;
 		}
-		os_file_read(fc_log->file, fc_log->buf, 0, 0, FLASH_CACHE_BUFFER_SIZE);
+		os_file_read(fc_log->file, fc_log->buf, 0, FLASH_CACHE_BUFFER_SIZE);
 
 		ut_a(mach_read_from_4(fc_log->buf+FLASH_CACHE_LOG_CHKSUM) == 
 			 mach_read_from_4(fc_log->buf+FLASH_CACHE_LOG_CHKSUM2));
@@ -204,7 +206,7 @@ fc_log_create(void)
 		} 
 		
 		/* don't allow to change write mode */
-		if (srv_flash_cache_write_mode != mach_read_from_4(fc_log->buf
+		if (srv_flash_cache_write_mode != (ulong)mach_read_from_4(fc_log->buf
 			+ FLASH_CACHE_LOG_WRITE_MODE)) {
 			ut_print_timestamp(stderr);
 			fprintf(stderr," InnoDB: cann't change L2 Cache write mode from %lu to %lu,"
@@ -213,7 +215,7 @@ fc_log_create(void)
 				srv_flash_cache_write_mode);
 			
 			srv_flash_cache_write_mode = 
-				mach_read_from_4(fc_log->buf + FLASH_CACHE_LOG_WRITE_MODE);
+				(ulong)mach_read_from_4(fc_log->buf + FLASH_CACHE_LOG_WRITE_MODE);
 		}
 
 		/* use fc_log in disk to init the fc_log memory object */
@@ -429,7 +431,7 @@ fc_log_commit(void)
 		FLASH_CACHE_LOG_CHECKSUM);
 
 	os_file_write(fc_log->log_file_path_name, fc_log->file, fc_log->buf, 
-		0, 0, FLASH_CACHE_BUFFER_SIZE);
+		0, FLASH_CACHE_BUFFER_SIZE);
 	os_file_flush(fc_log->file);
 
 }
@@ -445,7 +447,7 @@ fc_log_commit_for_skip_block(void)
 		fc_log->blk_find_skip);
 	
 	os_file_write(fc_log->log_file_path_name, fc_log->file, fc_log->buf, 
-		0, 0, FLASH_CACHE_BUFFER_SIZE);
+		0, FLASH_CACHE_BUFFER_SIZE);
 	os_file_flush(fc_log->file);
 }
 
@@ -463,7 +465,7 @@ fc_log_commit_when_update_flushoff(void)
 		fc_log->current_stat->flush_round);
 	
 	os_file_write(fc_log->log_file_path_name, fc_log->file, fc_log->buf, 
-		0, 0, FLASH_CACHE_BUFFER_SIZE);
+		0, FLASH_CACHE_BUFFER_SIZE);
 	os_file_flush(fc_log->file);
 	srv_fc_flush_should_commit_log_flush = 0;
 	flash_cache_log_mutex_exit();

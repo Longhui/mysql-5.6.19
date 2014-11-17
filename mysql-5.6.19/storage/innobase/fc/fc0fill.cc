@@ -103,7 +103,7 @@ fc_LRU_move(
 	}
 
 #ifdef UNIV_FLASH_CACHE_TRACE
-	if (buf_page_is_corrupted(page, zip_size)) {
+	if (buf_page_is_corrupted(true, page, zip_size)) {
 		ut_print_timestamp(stderr);
 		fprintf(stderr," InnoDB: page is corrupted in LRU_move. page type %lu, size %lu\n",
 			(ulong)fil_page_get_type(page), (ulong)zip_size);
@@ -245,7 +245,7 @@ retry:
 				byte* tmp = (byte*)ut_align(tmp_unalign, UNIV_PAGE_SIZE);
 				fc_block_compress_check(zip_buf, wf_block);
 				fc_block_do_decompress(DECOMPRESS_READ_SSD, zip_buf, wf_block->raw_zip_size, tmp);
-				if (buf_page_is_corrupted(tmp, zip_size)) {
+				if (buf_page_is_corrupted(true, tmp, zip_size)) {
 					fc_block_print(wf_block);
 					ut_error;
 				}
@@ -325,7 +325,7 @@ retry:
 				byte* tmp = (byte*)ut_align(tmp_unalign, UNIV_PAGE_SIZE);
 				fc_block_compress_check(zip_buf, wf_block);
 				fc_block_do_decompress(DECOMPRESS_READ_SSD, zip_buf, wf_block->raw_zip_size, tmp);
-				if (buf_page_is_corrupted(tmp, zip_size)) {
+				if (buf_page_is_corrupted(true, tmp, zip_size)) {
 					fc_block_print(wf_block);
 					ut_error;
 				}

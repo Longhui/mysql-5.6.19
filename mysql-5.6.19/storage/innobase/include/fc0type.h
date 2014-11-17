@@ -24,7 +24,7 @@ typedef struct fc_struct		fc_t;
 
 typedef struct flash_cache_stat_struct flash_cache_stat_t;
 
-//#define UNIV_FLASH_CACHE_TRACE	//should undefine in release
+#define UNIV_FLASH_CACHE_TRACE	//should undefine in release
 #define UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE //should define in release, undefine just for compare preformance with v1
 
 #endif

@@ -29,7 +29,12 @@ Modified by Thomas Wen (wenzhenghu.zju@gmail.com)
 #define FC_FIND_BLOCK_SKIP_COUNT 	1024
 #define FC_BLOCK_MM_NO_COMMIT 		8192
 
+#define FC_SRV_PEND_IO_THRESHOLD	(PCT_IO(3))
+#define FC_SRV_RECENT_IO_ACTIVITY	(PCT_IO(5))
+#define FC_SRV_PAST_IO_ACTIVITY		(PCT_IO(200))
 
+#define FC_BATCH_WRITE				1
+#define FC_SINGLE_WRITE				2
 
 /*type of the compress algorithm supported in L2 cache, */
 #define FC_BLOCK_COMPRESS_QUICKLZ	1	/*the default compress algorithm*/
@@ -81,8 +86,8 @@ Modified by Thomas Wen (wenzhenghu.zju@gmail.com)
 #define 	UPDATE_INNODB_STATUS	2	/*!< for 'show engine innodb status' */
 
 /** flash cache variables */
-extern ulint	srv_flash_cache_size;
-extern ulint	srv_flash_cache_block_size;
+extern long long	srv_flash_cache_size;
+extern ulong	srv_flash_cache_block_size;
 extern ulint	srv_flash_read_cache_size;
 extern char*	srv_flash_cache_file;
 extern char*	srv_flash_cache_warmup_table;
@@ -105,9 +110,9 @@ extern ulint  	srv_fc_flush_last_dump;
 extern ulint 	srv_fc_flush_should_commit_log_flush;
 extern ulint 	srv_fc_flush_should_commit_log_write;
 extern my_bool 	srv_flash_cache_enable_compress;
-extern ulint 	srv_flash_cache_compress_algorithm;
+extern ulong 	srv_flash_cache_compress_algorithm;
 extern my_bool 	srv_flash_cache_decompress_use_malloc;
-extern ulint 	srv_flash_cache_version;
+extern ulong 	srv_flash_cache_version;
 
 /** flash cache status */
 extern ulint	srv_flash_cache_read;
@@ -172,7 +177,7 @@ struct fc_block_array_struct{
 
 /** flash cache block struct */
 struct fc_block_struct{
-	mutex_t	mutex;		/*!<mutex protecting the block */
+	ib_mutex_t	mutex;		/*!<mutex protecting the block */
 	ulint	space:32;		/*!< tablespace id */
 	ulint	offset:32;		/*!< page number */
 	ulint	fil_offset:32;	/*!< flash cache page number */
@@ -209,7 +214,7 @@ struct fc_struct{
 	ulint			flush_off; 		/*!< flush to disk this offset, with n cache blocks */
 	ulint			write_round; 	/*!< write round */
 	ulint			flush_round; 	/*!< flush round */
-	mutex_t			mutex; 			/*!< mutex protecting write/flush_off/round */
+	ib_mutex_t		mutex; 			/*!< mutex protecting write/flush_off/round */
 	
 	fc_block_array_t* 	block_array; 			/*!< flash cache block array */
 
@@ -591,11 +596,11 @@ fc_block_compress_align(
 UNIV_INLINE
 void
 fc_block_set_compress_type(
-	ulint	compress_type
+	ulong	compress_type
 );
 
 UNIV_INLINE
-ulint
+ulong
 fc_block_get_compress_type(
 );
 
@@ -690,6 +695,17 @@ fc_load(void);
 
 /********************************************************************//**
 When srv_flash_cache_enable_write is FALSE, doublewrite buffer will behave as deault. 
+So if page need flush now(newer) is also in L2 Cache already(olded),
+it must be removed  from the L2 Cache before doublewrite write to disk.
+@return: if removed in L2 Cache */
+UNIV_INTERN
+ulint
+fc_block_remove_single_page(
+/*==================*/
+	buf_page_t* bpage);/*!< in: bpage need flush */
+
+/********************************************************************//**
+When srv_flash_cache_enable_write is FALSE, doublewrite buffer will behave as deault. 
 So if any page in doublewrite buffer now(newer) is also in L2 Cache already(olded),
 it must be removed  from the L2 Cache before doublewrite buffer write to disk.
 @return: pages removed in L2 Cache */
@@ -697,7 +713,16 @@ UNIV_INTERN
 ulint
 fc_block_remove_from_hash(
 /*==================*/
-	trx_doublewrite_t* trx_dw);	/*!< in: doublewrite structure */
+	buf_dblwr_t* trx_dw);/*!< in: doublewrite structure */
+
+/********************************************************************//**
+Writes a page to the to Cache and sync it. if sync write, call io complete */
+UNIV_INTERN
+void
+fc_write_single_page(
+/*========================*/
+	buf_page_t*	bpage,	/*!< in: buffer block to write */
+	bool		sync);	/*!< in: true if sync IO requested */
 
 /********************************************************************//**
 Flush double write buffer to L2 Cache block.no io will read or write the ssd block which
@@ -708,7 +733,7 @@ UNIV_INTERN
 void
 fc_write(
 /*===========================*/
-	trx_doublewrite_t* trx_dw);	/*!< in: doublewrite structure */
+	buf_dblwr_t* trx_dw);	/*!< in: doublewrite structure */
 
 /********************************************************************//**
 Flush a batch of writes to the datafiles that have already been
@@ -723,7 +748,7 @@ Read page from L2 Cache block, if not found in L2 Cache, read from disk.
 Note: ibuf page must read in aio mode to avoid deadlock
 @return DB_SUCCESS is success, 1 if read request is issued. 0 if it is not */
 UNIV_INTERN
-ulint
+dberr_t
 fc_read_page(
 /*==============*/
 	ibool	sync,	/*!< in: TRUE if synchronous aio is desired */
@@ -753,6 +778,7 @@ fc_status(
 /*=================================*/
 	ulint page_read_delta,	/*!< in: page_read_delta from buf pool */
 	ulint n_ra_pages_read,	/*!< in: read ahead page counts */
+	ulint n_pages_read,		/*!< in: read page counts */
 	FILE* file);			/*!< in: print the fc status to this file */
 
 #ifndef UNIV_NONINL

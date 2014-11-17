@@ -97,7 +97,8 @@ fc_warmup_tablespace(
 	ulint	zip_size, blk_size;
 	ulint 	fc_blk_size_byte = fc_get_block_size_byte();
 	ulint 	need_compress, cp_size;
-	ulint	offset, foffset, foffset_high;
+	ulint	offset;
+	//ulint	foffset, foffset_high;
 	ulint 	block_offset, byte_offset;
 
 	fc_block_t* b;
@@ -143,9 +144,9 @@ fc_warmup_tablespace(
 	i = 0;
 	n_blocks = zip_size / fc_blk_size_byte;
 	while (fc_get_available() > n_blocks) {
-		foffset = ((ulint)(i * zip_size)) & 0xFFFFFFFFUL;
-		foffset_high = (ib_uint64_t)(i * zip_size) >> 32;
-		success = os_file_read_no_error_handling(file, buf, foffset, foffset_high, 
+		//foffset = ((ulint)(i * zip_size)) & 0xFFFFFFFFUL;
+		//foffset_high = (ib_uint64_t)(i * zip_size) >> 32;
+		success = os_file_read_no_error_handling(file, buf, (i * zip_size), 
 					zip_size * 2 * FSP_EXTENT_SIZE);
 			
 		if (!success) {
@@ -379,7 +380,7 @@ fc_warmup_tablespaces(void)
 					buf2 = (byte*)ut_malloc(2 * UNIV_PAGE_SIZE);
 					/* Align the memory for file i/o if we might have O_DIRECT set */
 					page = (byte*)ut_align(buf2, UNIV_PAGE_SIZE);
-					os_file_read(file, page, 0, 0, UNIV_PAGE_SIZE);
+					os_file_read(file, page, 0, UNIV_PAGE_SIZE);
 					/* We have to read the tablespace id from the file */
 					space_id = fsp_header_get_space_id(page);
 

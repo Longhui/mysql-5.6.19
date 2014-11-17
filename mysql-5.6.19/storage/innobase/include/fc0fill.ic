@@ -1,0 +1,54 @@
+/**************************************************//**
+@file fc/fc0fill.ic
+Flash Cache for InnoDB
+
+Created	24/10/2013 Thomas Wen(wenzhenghu.zju@gmail.com)
+*******************************************************/
+
+#ifndef fc0fill_ic
+#define fc0fill_ic
+
+#define FLASH_CACHE_MOVE_HIGH_LIMIT (1.0*srv_flash_cache_move_limit*fc_get_size()/100)
+#define FLASH_CACHE_MOVE_LOW_LIMIT (1.0*(100-srv_flash_cache_move_limit)*fc_get_size()/100)
+
+/******************************************************************//**
+whether bpage should be moved in flash cache 
+@return TRUE if need do move operation */
+UNIV_INLINE
+ibool
+fc_LRU_need_move(
+/*=====================*/
+	fc_block_t* b) /*<! in: L2 Cache block if should move */
+{
+	ut_ad(mutex_own(&(fc->mutex)));
+	ut_ad(mutex_own(&(b->mutex)));
+
+	return ((((fc->write_off > b->fil_offset) && (fc->write_off - b->fil_offset ) 
+				>= FLASH_CACHE_MOVE_HIGH_LIMIT)
+		|| ((fc->write_off < b->fil_offset) && ( b->fil_offset - fc->write_off )
+				<= FLASH_CACHE_MOVE_LOW_LIMIT))
+		&& b->state != BLOCK_READY_FOR_FLUSH
+		/* block being flushed can not be moved, as we may read data from ssd later */
+		&& b->io_fix == IO_FIX_NO_IO
+		&& (b->space != 0 && b->offset != 0));
+}
+
+/******************************************************************//**
+whether bpage should be migrate to flash cache 
+@return TRUE if need do migrate operation */
+UNIV_INLINE
+ibool
+fc_LRU_need_migrate(
+/*=====================*/
+	fc_block_t* b, 	   /*<! in: block 'returned' by HASH_SEARCH */
+	buf_page_t* bpage) /*<! in: the buf page replaced by buf LRU */	
+{
+	ut_ad(bpage);
+	ut_ad(mutex_own(&fc->mutex));
+
+	return (b == NULL && (bpage->access_time != 0) 
+		&& srv_flash_cache_enable_migrate
+		&& (bpage->space != 0 && bpage->offset != 0));
+}
+
+#endif

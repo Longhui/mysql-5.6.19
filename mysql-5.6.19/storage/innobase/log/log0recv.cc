@@ -48,6 +48,7 @@ Created 9/20/1997 Heikki Tuuri
 #include "trx0undo.h"
 #include "trx0rec.h"
 #include "fil0fil.h"
+#include "fc0fc.h"
 #ifndef UNIV_HOTBACKUP
 # include "buf0rea.h"
 # include "srv0srv.h"
@@ -2986,7 +2987,10 @@ recv_init_crash_recovery(void)
 		ib_logf(IB_LOG_LEVEL_INFO,
 			"from the doublewrite buffer...");
 
-		buf_dblwr_process();
+		/* if L2 Cache is enabled, when recv, disk doublewrite buffer is handled by fc_recv */
+		if (!fc_is_enabled()) {
+			buf_dblwr_process();
+		}
 
 		/* Spawn the background thread to flush dirty pages
 		from the buffer pools. */

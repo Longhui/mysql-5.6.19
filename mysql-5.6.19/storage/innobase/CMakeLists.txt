@@ -254,7 +254,7 @@ IF (MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
 ENDIF()
 
 IF (NOT WIN32) 
-SET (WITH_SNAPPY fc/fc0snappy.c) 
+SET (WITH_SNAPPY fc/fc0snappy.cc) 
 ENDIF()
 
 SET(INNOBASE_SOURCES
@@ -285,15 +285,15 @@ SET(INNOBASE_SOURCES
 	eval/eval0eval.cc
 	eval/eval0proc.cc
 
-	fc/fc0fc.c
-	fc/fc0log.c 
-	fc/fc0recv.c 
-	fc/fc0fill.c 
-	fc/fc0flu.c 	
+	fc/fc0fc.cc
+	fc/fc0log.cc
+	fc/fc0recv.cc 
+	fc/fc0fill.cc
+	fc/fc0flu.cc 	
 	${WITH_SNAPPY}
-	fc/fc0warmup.c 
-	fc/fc0backup.c 
-	fc/fc0quicklz.c 
+	fc/fc0warmup.cc 
+	fc/fc0backup.cc 
+	fc/fc0quicklz.cc 
 
 	fil/fil0fil.cc
 	fsp/fsp0fsp.cc

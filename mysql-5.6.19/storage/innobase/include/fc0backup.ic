@@ -1,0 +1,11 @@
+/**************************************************//**
+@file fc/fc0backup.ic
+Backup Flash Cache dirty blocks to other file
+
+Created	24/10/2013 Thomas Wen(wenzhenghu.zju@gmail.com)
+*******************************************************/
+
+#ifndef fc0backup_ic
+#define fc0backup_ic
+
+#endif

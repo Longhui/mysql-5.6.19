@@ -113,7 +113,7 @@ fc_recv_read_block_to_hash_table(
 						ut_a(UNIV_PAGE_SIZE == 
 							fc_block_do_decompress(DECOMPRESS_RECOVERY, page, raw_compress_size, fc->recv_dezip_buf));
 						
-						if (buf_page_is_corrupted(fc->recv_dezip_buf, zip_size)) {
+						if (buf_page_is_corrupted(true, fc->recv_dezip_buf, zip_size)) {
 							ut_print_timestamp(stderr);
 							fprintf(stderr, "InnoDB:L2 cache: recv find a l2 compress"
 								" corrupted page.space%d, offset%d\n", (int)space, (int)offset);
@@ -143,7 +143,7 @@ fc_recv_read_block_to_hash_table(
 		/* try to get the zip_size with space id, warning:the id may be wrong */
 		zip_size = fil_space_get_zip_size(space);
 
-		if ((zip_size != ULINT_UNDEFINED) && (FALSE == buf_page_is_corrupted(page, zip_size))) {
+		if ((zip_size != ULINT_UNDEFINED) && (FALSE == buf_page_is_corrupted(true, page, zip_size))) {
 			lsns_in_fc[f_offset + j] = mach_read_from_8(page + FIL_PAGE_LSN);
 			raw_compress_size = 0;
 			goto do_next;
@@ -165,7 +165,7 @@ fc_recv_read_block_to_hash_table(
 				 * if it is in the end of the current read,
 				 * just read from the offset to the end of buf
 				 */
-				page_len = (n_read - j) * blk_size;
+				page_len = (int)((n_read - j) * blk_size);
 			} else {
 				page_len = PAGE_SIZE_KB;
 			}
@@ -384,24 +384,24 @@ fc_recv_dwb_pages_to_disk(void)
 	ulint i;
 	ulint space_id;
 	ulint page_no;
-	unsigned zip_size;
+	ulint zip_size;
 	ib_uint64_t lsn_in_dwb;
 	ib_uint64_t lsn_in_disk;
-	byte  unaligned_read_buf[2 * UNIV_PAGE_SIZE];
-	byte* read_buf = ut_align(unaligned_read_buf, UNIV_PAGE_SIZE);
+	byte  unaligned_read_buf[32 * KILO_BYTE];
+	byte* read_buf = (byte*)ut_align(unaligned_read_buf, UNIV_PAGE_SIZE);
 	byte* page;
 
 	
-	fil_io(OS_FILE_READ, TRUE, TRX_SYS_SPACE, 0, trx_doublewrite->block1, 0,
+	fil_io(OS_FILE_READ, TRUE, TRX_SYS_SPACE, 0, buf_dblwr->block1, 0,
 	       	TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * UNIV_PAGE_SIZE,
-	      	 trx_doublewrite->write_buf, NULL);
-	fil_io(OS_FILE_READ, TRUE, TRX_SYS_SPACE, 0, trx_doublewrite->block2, 0,
+	      	 buf_dblwr->write_buf, NULL);
+	fil_io(OS_FILE_READ, TRUE, TRX_SYS_SPACE, 0, buf_dblwr->block2, 0,
 	      	 TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * UNIV_PAGE_SIZE,
-	      	 trx_doublewrite->write_buf + 
+	      	 buf_dblwr->write_buf + 
 	      	 	TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * UNIV_PAGE_SIZE, NULL);
 	
 	for (i = 0; i < TRX_SYS_DOUBLEWRITE_BLOCK_SIZE * 2; ++i) {
-		page = trx_doublewrite->write_buf + i * UNIV_PAGE_SIZE;
+		page = buf_dblwr->write_buf + i * UNIV_PAGE_SIZE;
 		space_id = mach_read_from_4(page + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);
 		page_no = mach_read_from_4(page + FIL_PAGE_OFFSET);
 		if (!fil_tablespace_exists_in_mem(space_id)) {
@@ -416,7 +416,7 @@ fc_recv_dwb_pages_to_disk(void)
 			zip_size = fil_space_get_zip_size(space_id);
 			ut_ad(ULINT_UNDEFINED != zip_size);
 
-			if (buf_page_is_corrupted(page, zip_size)) {
+			if (buf_page_is_corrupted(true, page, zip_size)) {
 				ut_print_timestamp(stderr);
 				fprintf(stderr,
 					" InnoDB: The page in the doublewrite buffer is corrupt.\n"
@@ -430,7 +430,7 @@ fc_recv_dwb_pages_to_disk(void)
                    zip_size ? zip_size : UNIV_PAGE_SIZE, read_buf, NULL);
 			lsn_in_disk  = mach_read_from_8(read_buf + FIL_PAGE_LSN);
 			
-			if (buf_page_is_corrupted(read_buf, zip_size)
+			if (buf_page_is_corrupted(true, read_buf, zip_size)
 					|| lsn_in_dwb > lsn_in_disk) {
                 /* write back from doublewrite buffer to disk */
 				fil_io(OS_FILE_WRITE, TRUE, space_id, zip_size, page_no, 0,
@@ -455,11 +455,11 @@ fc_recv(void)
 	ulint flush_round;
 	ulint write_round;
 	
-	unsigned 	i;
-	byte		unaligned_disk_buf[2 * UNIV_PAGE_SIZE];
+	ulint	 	i;
+	byte		unaligned_disk_buf[32 * KILO_BYTE];
 	byte*		disk_buf;
 	ib_uint64_t lsn_in_disk;
-	unsigned 	zip_size;
+	ulint	 	zip_size;
 	ulint 		space_id;
 	ulint 		page_no;
 	fc_block_t* fc_block;
@@ -492,7 +492,7 @@ fc_recv(void)
 	fprintf(stderr, " InnoDB: BEGIN L2 Cache recovery!!!\n");
 #endif
 
-	ut_ad(trx_doublewrite);
+	ut_ad(buf_dblwr);
     
 	if (fc_log->enable_write_curr == FALSE) {
 		 /* we should first check doublewrite disk buffer, and write data to tablespace*/
@@ -532,7 +532,7 @@ fc_recv(void)
 	}
 	flash_cache_mutex_exit();
 	
-	lsns_in_fc = ut_malloc(sizeof(ib_uint64_t) * block_num);
+	lsns_in_fc = (ib_uint64_t*)ut_malloc(sizeof(ib_uint64_t) * block_num);
 	ut_a(lsns_in_fc);
 
 	for (i = 0; i < block_num; i++) {
@@ -634,7 +634,7 @@ fc_recv(void)
 	fprintf(stderr," InnoDB: L2 Cache start compare the ssd data with disk data.\n");
 #endif
 	
-	sorted_fc_blocks = ut_malloc(block_num * sizeof(fc_block_t*));
+	sorted_fc_blocks = (fc_block_t**)ut_malloc(block_num * sizeof(fc_block_t*));
 	ut_ad(sorted_fc_blocks);
 
 	n_newest_version_in_fcl = 0;
@@ -667,7 +667,7 @@ fc_recv(void)
 #endif
 		
 	n_removed_pages_for_wrong_version = 0;
-	disk_buf = ut_align(unaligned_disk_buf,UNIV_PAGE_SIZE);
+	disk_buf = (unsigned char*)ut_align(unaligned_disk_buf, UNIV_PAGE_SIZE);
 	for (i = 0; i < n_newest_version_in_fcl; ++i) {
 		fc_block = sorted_fc_blocks[i];
 		space_id = fc_block->space;

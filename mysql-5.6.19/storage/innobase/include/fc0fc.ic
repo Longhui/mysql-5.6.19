@@ -1,0 +1,973 @@
+/**************************************************//**
+@file fc/fc0fc.ic
+Flash Cache for InnoDB
+
+Created	24/10/2013 Thomas Wen (wenzhenghu.zju@gmail.com)
+*******************************************************/
+
+#ifndef fc0fc_ic
+#define fc0fc_ic
+
+#include "fc0fc.h"
+
+/**************************************************************//**
+For use of fc_block_sort, sort block with space and offset in ascend order
+@return: the compare result of two pointers */
+UNIV_INLINE
+int 
+fc_page_cmp_ascending(
+/*=====================*/
+	const void* p1, /*!< in: data pointer */
+	const void* p2) /*!< in:  data pointer */
+{	
+	const fc_block_t* p_fc_block_1 = *((fc_block_t**) p1);	
+	const fc_block_t* p_fc_block_2 = *((fc_block_t**) p2);
+	
+	if(p_fc_block_1->space < p_fc_block_2->space)	
+		return -1;	
+	if(p_fc_block_1->space > p_fc_block_2->space)	
+		return 1;		
+	if(p_fc_block_1->offset < p_fc_block_2->offset)	
+		return -1;		
+	if(p_fc_block_1->offset > p_fc_block_2->offset)	
+		return 1;		
+	return 0;	
+}
+
+/**************************************************************//**
+For use of fc_block_sort, sort block with space and offset in descend order
+@return: the compare result of two pointers */
+UNIV_INLINE
+int 
+fc_page_cmp_descending(
+/*=====================*/
+	const void* p1, /*!< in: data pointer */
+	const void* p2) /*!< in:  data pointer */
+{	
+	const fc_block_t* p_fc_block_1 = *((fc_block_t**) p1);	
+	const fc_block_t* p_fc_block_2 = *((fc_block_t**) p2);
+	
+	if(p_fc_block_1->space > p_fc_block_2->space)	
+		return -1;	
+	if(p_fc_block_1->space < p_fc_block_2->space)	
+		return 1;		
+	if(p_fc_block_1->offset > p_fc_block_2->offset)	
+		return -1;		
+	if(p_fc_block_1->offset < p_fc_block_2->offset)	
+		return 1;		
+	return 0;	
+}
+
+/**************************************************************//**
+Sort block with space and offset in descend or ascend order*/
+UNIV_INLINE
+void 
+fc_block_sort(
+/*=======================*/
+	fc_block_t** base, 	/*!< in: blocks pointers array for sort */
+	ulint len, 			/*!< in: the number of blocks to be sorted */
+	ulint type)			/*!< in: sort with descend or ascend order */
+{
+	ut_a(base);
+	ut_a(len);
+	ut_a(ASCENDING == type || DESCENDING == type);
+	if(ASCENDING == type)
+		qsort(base, len, sizeof(fc_block_t*), fc_page_cmp_ascending);
+	else
+		qsort(base, len, sizeof(fc_block_t*), fc_page_cmp_descending);
+}
+
+/**************************************************************//**
+Check whether flash cache is enable.*/
+UNIV_INLINE
+my_bool
+fc_is_enabled(void)
+/*=========*/
+{
+	if ( srv_flash_cache_size > 0 )
+		return TRUE;
+	ut_a(srv_flash_cache_size == 0);
+	return FALSE;
+}
+
+/**************************************************************//**
+Get flash cache available block numbers
+@return number of available flash cache blocks*/
+UNIV_INLINE
+ulint
+fc_get_available(void)
+/*=========*/
+{
+	ut_a(fc != NULL);
+	return (fc_get_size() - fc_get_distance());
+}
+
+/**************************************************************//**
+Get flash cache size
+@return number of flash cache blocks */
+UNIV_INLINE
+ulint
+fc_get_size(void)
+/*=========*/
+{
+	ut_a(fc != NULL);
+	return fc->size;
+}
+
+/**************************************************************//**
+Get flash cache block size
+@return size of flash cache block, with n KB*/
+UNIV_INLINE
+ulint
+fc_get_block_size(void)
+/*=========*/
+{
+	ut_a(fc != NULL);
+	return fc->block_size;
+}
+
+/**************************************************************//**
+Get flash cache block size
+@return size of flash cache block, with n B*/
+UNIV_INLINE
+ulint
+fc_get_block_size_byte(void)
+/*=========*/
+{
+	ut_a(fc != NULL);
+	return fc->block_size * KILO_BYTE;
+}
+
+
+/**************************************************************//**
+Set flash cache size, in n cache blocks. */
+UNIV_INLINE
+void
+fc_set_size(
+/*================*/
+	ulint size)	/*!< in: flash cache size */
+{
+	ut_a(fc != NULL);
+	fc->size = size;
+}
+
+/******************************************************************//**
+Get distance between flush offset and write offset .
+@return	number of pages*/ 
+UNIV_INLINE
+ulint
+fc_get_distance(void)
+/*==================*/
+{
+	ut_ad(mutex_own(&fc->mutex));
+
+	if (fc->write_round == fc->flush_round) {
+		return (fc->write_off - fc->flush_off);
+	} else {
+		return (fc_get_size() + fc->write_off - fc->flush_off);
+	}
+}
+
+/******************************************************************//**
+Delete the delete_block from hash table, make sure the caller 
+have hold the hash table lock. */ 
+UNIV_INLINE
+void
+fc_block_delete_from_hash(
+/*============================*/
+	fc_block_t* delete_block)	/*!< in: the L2 Cache block need to 
+								be delete from hash table */
+{
+	HASH_DELETE(fc_block_t, hash, fc->hash_table,
+	buf_page_address_fold(delete_block->space, delete_block->offset), delete_block);
+
+	delete_block->state = BLOCK_NOT_USED;
+}
+
+/******************************************************************//**
+Search the block in hash table, make sure the caller have hold the hash table lock.
+@return	the L2 Cache block, if is in hash table. else return NULL*/ 
+UNIV_INLINE
+fc_block_t*
+fc_block_search_in_hash(
+/*==================*/
+	ulint space,	/*!< in: the space id which we search in block */
+	ulint offset)	/*!< in: the space offset which we search in block */
+{
+	fc_block_t *out_block = NULL;
+	HASH_SEARCH(hash, fc->hash_table,
+		buf_page_address_fold(space, offset),
+		fc_block_t*, out_block, ut_ad(1),
+		out_block->space == space && out_block->offset == offset);
+	return out_block;
+}
+
+/******************************************************************//**
+Insearch the insert_block into hash table, make sure the caller 
+have hold the hash table lock. */ 
+UNIV_INLINE
+void
+fc_block_insert_into_hash(
+/*========================*/
+	fc_block_t* insert_block)	/*!< in: the L2 Cache block 
+									need to be insert into hash table */
+{
+	HASH_INSERT(fc_block_t, hash, fc->hash_table,
+			buf_page_address_fold(insert_block->space, insert_block->offset), 
+			insert_block);
+}
+
+/******************************************************************//**
+Inc the fc write_off, inc the fc write_round if necessary. 
+make sure caller have hold the fc mutex */ 
+UNIV_INLINE
+void
+fc_inc_write_off(
+/*==================*/
+	ulint inc_count) /*!< in: add that many offset in fc write_off */	
+{
+	fc->write_off = fc->write_off + inc_count;  
+	if (fc->write_off >= fc_get_size()) {
+		fc->write_off = fc->write_off % fc_get_size();
+		fc->write_round = fc->write_round + 1;
+	}
+	ut_a((fc->write_round == fc->flush_round) 
+		|| ((fc->write_round = 1 + fc->flush_round)));
+}
+
+/******************************************************************//**
+Inc the fc flush_off, inc the fc flush_round if necessary. 
+make sure caller have hold the fc mutex */ 
+UNIV_INLINE
+void
+fc_inc_flush_off(
+/*==================*/
+	ulint inc_count) /*!< in: add that many offset in fc flush_off */	
+{
+	fc->flush_off = fc->flush_off + inc_count;  
+	if (fc->flush_off >= fc_get_size()) {
+		fc->flush_off = fc->flush_off % fc_get_size();
+		fc->flush_round = fc->flush_round + 1;
+	}
+	
+	ut_a((fc->write_round == fc->flush_round) ||
+		((fc->write_round = 1 + fc->flush_round)));
+}
+
+/********************************************************************//**
+Test if the compress is helpfull.
+@return TRUE if compress successed */
+UNIV_INLINE
+ibool
+fc_block_compress_successed(
+/*==================*/
+	ulint cp_size) /*!< in: the page size after compress */
+{
+	//printf("cp_size in successed %lu ", cp_size);
+	if ((cp_size + FC_ZIP_PAGE_META_SIZE) 
+			< (UNIV_PAGE_SIZE - fc_get_block_size_byte())) {
+		return TRUE;
+	} 
+
+	return FALSE;
+}
+
+/******************************************************************//**
+Test if the buf page should be compress by L2 Cache. 
+@return: return TRUE if the page should be compressed */ 
+UNIV_INLINE
+ibool  
+fc_block_need_compress(
+/*=====================*/
+	ulint space_id) /*!< in: space_id of the page */
+{
+	ulint page_size;
+	ulint blk_size;
+	
+	if (srv_flash_cache_enable_compress == FALSE) {
+		/* no compress feature enable */
+    	return FALSE;
+    }
+	
+	page_size = fil_space_get_zip_size(space_id);
+	if (page_size != 0) {
+		/* page has already been compressed */
+		return FALSE;
+	} 
+	
+	blk_size = fc_get_block_size();
+	if (blk_size == UNIV_PAGE_SIZE/KILO_BYTE) {
+		/* flash cache block size is UNIV_PAGE_SIZE, no need to compress */
+		return FALSE;
+	}
+		
+	return TRUE;
+}
+
+/******************************************************************//**
+Test if the L2 Cache block has been compressed by L2 Cache. 
+@return: return TRUE if the page has been compressed */ 
+UNIV_INLINE
+ibool  
+fc_block_need_decompress(
+/*=======================*/
+	fc_block_t* block) /*!< in: L2 Cache block */
+{
+	if (block->raw_zip_size == 0) {
+		return FALSE;
+	}
+	
+	return TRUE;
+}
+
+/**********************************************************************//**
+Align the compress size(n byte) with base fc block size, return the number of blocks
+@return: return the aligned size of the compressed block (with n fc block)*/
+UNIV_INLINE
+ulint 
+fc_block_compress_align(
+/*=======================*/
+	ulint	size_unalign) /*!< in: the compressed L2 Cache block size before align */
+{
+
+	ulint blk_size_byte;
+	ulint n_blocks;
+
+	size_unalign += FC_ZIP_PAGE_META_SIZE;
+	
+	blk_size_byte = fc_get_block_size_byte();
+	n_blocks = size_unalign / blk_size_byte;
+
+	if ((n_blocks * blk_size_byte) < size_unalign) {
+		n_blocks++;
+	}
+	
+	return n_blocks;
+}
+
+UNIV_INLINE
+void 
+fc_block_set_compress_type(
+	ulong	compress_type
+)
+{
+	srv_flash_cache_compress_algorithm = compress_type;
+}
+
+UNIV_INLINE
+ulong 
+fc_block_get_compress_type(
+)
+{
+	return srv_flash_cache_compress_algorithm;
+}
+
+/********************************************************************//**
+Get the data size of the block, either blk_size or blk_zip_size. 
+@return: the number of base L2 Cache block */
+UNIV_INLINE
+ulint
+fc_block_get_data_size(
+/*=======================*/
+	fc_block_t* block) /*!< in: the L2 Cache block we want to get its size */
+{
+	ulint data_size = 0;
+
+	if (block->raw_zip_size > 0) {
+		if (block->is_v4_blk) {
+			data_size = block->raw_zip_size;
+		} else {
+			data_size = fc_block_compress_align(block->raw_zip_size);
+		}
+	} else {
+		data_size =  block->size;
+	}
+
+#ifdef UNIV_FLASH_CACHE_TRACE
+	if (data_size == 0) {
+		fc_block_print(block);
+		ut_a(0);
+	} else if (data_size > PAGE_SIZE_KB){
+		fc_block_print(block);
+		ut_a(0);
+	}
+
+	if ((block->is_v4_blk == 0)
+			&& (block->size < fc_block_compress_align(block->raw_zip_size))) {
+		fc_block_print(block);
+		ut_a(0);
+	}
+
+	if ((block->is_v4_blk) && (block->size < block->raw_zip_size)) {
+		fc_block_print(block);
+		ut_a(0);
+	}
+#endif
+
+	return data_size;
+}
+
+/********************************************************************//**
+Get the data size of the block, the size before compressed by L2 Cache. 
+@return: the number of base L2 Cache block */
+UNIV_INLINE
+ulint
+fc_block_get_orig_size(
+/*=======================*/
+	fc_block_t* block) /*!< in: the L2 Cache block we want to 
+						get its original size */
+{
+	ulint data_size = 0;
+
+	data_size =  block->size;
+	
+#ifdef UNIV_FLASH_CACHE_TRACE
+	if (data_size == 0) {
+		fc_block_print(block);
+		ut_a(0);
+	} else if (data_size > PAGE_SIZE_KB){
+		fc_block_print(block);
+		ut_a(0);
+	}
+
+	if ((block->is_v4_blk == 0)
+			&& (block->size < fc_block_compress_align(block->raw_zip_size))) {
+		fc_block_print(block);
+		ut_a(0);
+	}
+
+	if ((block->is_v4_blk) && (block->size < block->raw_zip_size)) {
+		fc_block_print(block);
+		ut_a(0);
+	}
+
+#endif
+
+	return data_size;
+}
+
+/******************************************************************//**
+Check a block metadata with the packed data buffer */ 
+UNIV_INLINE
+void  
+fc_block_compress_check(
+/*=======================*/
+	byte* buf, /*!< in: the compress data buffer */
+	fc_block_t* block) /*!< in: the block need to check */
+{
+	ulint size = (ulint)mach_read_from_4(buf + FC_ZIP_PAGE_ORIG_SIZE);
+	ulint zip_size = (ulint)mach_read_from_4(buf + FC_ZIP_PAGE_SIZE);
+	ulint space = (ulint)mach_read_from_4(buf + FC_ZIP_PAGE_SPACE);
+	ulint offset = (ulint)mach_read_from_4(buf + FC_ZIP_PAGE_OFFSET);
+	ulint raw_zip_size = (ulint)mach_read_from_4(buf + FC_ZIP_PAGE_ZIP_RAW_SIZE);
+	
+	ut_a((ulint)mach_read_from_4(buf + FC_ZIP_PAGE_HEADER) == FC_ZIP_PAGE_CHECKSUM);
+
+
+	if (block->is_v4_blk) {
+		ut_a(zip_size == block->raw_zip_size * fc_get_block_size_byte());	
+		ut_a((ulint)mach_read_from_4(buf 
+		+ block->raw_zip_size * fc_get_block_size_byte()
+		- FC_ZIP_PAGE_TAILER) == FC_ZIP_PAGE_CHECKSUM);	
+	} else {
+		ut_a((ulint)mach_read_from_4(buf
+		+ fc_block_compress_align(block->raw_zip_size) * fc_get_block_size_byte()
+		- FC_ZIP_PAGE_TAILER) == FC_ZIP_PAGE_CHECKSUM);	
+		ut_a(zip_size == fc_block_compress_align(block->raw_zip_size) * fc_get_block_size_byte());
+		ut_a(raw_zip_size == block->raw_zip_size);	
+	}
+
+	ut_a(size == UNIV_PAGE_SIZE);		
+	ut_a(space == block->space);
+	ut_a(offset == block->offset);	
+	
+}
+
+
+/******************************************************************//**
+Find a L2 Cache block to write, if the block is io_fixed, we will skip
+@return: the block found for write */ 
+
+/*
+ * from my point view, this function should be move to fc0fc.c
+ * and marked as static, because it only use in fc_write.
+ * Secondly, the lines of this function is huge, with a lot if and while condition
+ * UNIV_INLINE may not help to optimize as you expected.
+ * Another problem is os_thread_sleep(5000), can it be replaced by os_event_t?
+ */
+UNIV_INLINE
+fc_block_t*  
+fc_block_find_replaceable(
+/*=======================*/
+	ulint must_find, 		 /*!< in: if must find a block */
+	ulint block_size)  /*!< in: allocate this many block. block size, 
+							with n flash cache blocks*/
+{
+	ulint i;
+	ulint start_position;
+	ulint data_size = 0;
+	fc_block_t *tmp_block;	
+
+    ut_ad(rw_lock_get_writer(&fc->hash_rwlock) == RW_LOCK_EX);
+	ut_a(fc_get_available() >= block_size);
+	ut_a(block_size);
+	ut_a(block_size <= PAGE_SIZE_KB);
+
+	ut_a(fc->is_finding_block == 0);
+
+retry:
+
+	if (fc_get_available() <= (block_size + FC_LEAST_AVIABLE_BLOCK_FOR_RECV / 2)) {
+		/* only flush is allowed when  fc->is_finding_block = 1 */
+		fc->is_finding_block = 1;
+		rw_lock_x_unlock(&fc->hash_rwlock); 
+		fc_wait_for_space();
+
+		flash_cache_mutex_enter();
+		rw_lock_x_lock(&fc->hash_rwlock); 
+		fc->is_finding_block = 0;
+		goto retry;
+	} 
+
+	start_position = fc->write_off;
+
+	if ((start_position + block_size) > fc_get_size()) {
+		start_position = fc->write_off = 0;
+		fc->write_round++;
+	}
+	
+	i = 0;
+	
+	/* 
+	 * the block in the loop is all replaceable, except the one io fixed, 
+	 * we will wait it compelete
+	 */
+	while (i < block_size) {
+		tmp_block = fc_get_block(start_position + i);
+		if (tmp_block == NULL) {
+			i++;
+			continue;
+		}
+
+		flash_block_mutex_enter(tmp_block->fil_offset);
+		
+		data_size = fc_block_get_data_size(tmp_block);
+
+		/* if the block is read io fixed, just skip it */
+		if (tmp_block->io_fix & IO_FIX_READ) {		
+#ifdef UNIV_FLASH_CACHE_TRACE
+			fprintf(fc->f_debug, "find io %d, fix 0x%x. file:%s:%d\n", 
+				(int)tmp_block->fil_offset, (int)tmp_block->io_fix,
+                                __FILE__, __LINE__);
+            fc_block_print(tmp_block);
+#endif
+			srv_flash_cache_wait_aio++;
+
+			if (must_find == TRUE) {
+				fc->write_off += (i + data_size);
+				flash_block_mutex_exit(tmp_block->fil_offset);
+				goto retry;
+			} else {
+				flash_block_mutex_exit(tmp_block->fil_offset);
+				return NULL;
+			}
+		}
+		
+		i += data_size;
+		
+		/* the block is read cache or flushed, remove it from hash table */
+		if (tmp_block->state != BLOCK_NOT_USED) {
+			if ((tmp_block->state != BLOCK_READ_CACHE) 
+				&& (tmp_block->state != BLOCK_FLUSHED) ) {
+				fprintf(stderr, "L2 Cache find a block with state %lu, available %lu\n", 
+					(ulong)tmp_block->state, fc_get_available());
+				fc_round_print();
+				fc_block_print(tmp_block);
+				ut_error;
+			}
+			
+			fc_block_delete_from_hash(tmp_block);
+
+#ifdef UNIV_FLASH_CACHE_TRACE
+			fc_print_used();
+#endif
+
+			srv_flash_cache_used -= data_size;
+
+			srv_flash_cache_used_nocompress -= fc_block_get_orig_size(tmp_block);
+		}
+
+		flash_block_mutex_exit(tmp_block->fil_offset);
+		fc_block_free(tmp_block);
+
+	}
+
+	/* ok, we found a right block for fill data, and have set blocks not used */
+	tmp_block = fc_block_init(start_position);
+	tmp_block->size = block_size;
+
+	if (tmp_block->state != BLOCK_NOT_USED) {
+		fc_block_print(tmp_block);
+		ut_a(0);
+	}
+	
+	ut_a(tmp_block->io_fix == IO_FIX_NO_IO);
+	ut_a(tmp_block->fil_offset < fc_get_size());
+	
+	return tmp_block;
+}
+
+/******************************************************************//**
+Exchange a L2 Cache block fil_offset into block_offset and byte_offset
+that is suitable for fil_io */ 
+UNIV_INLINE
+void
+fc_io_offset(
+/*==================*/
+	ulint fil_offset,   /*<! in: L2 Cache block fil_offset */
+	ulint* block_offset,/*<! out: L2 Cache block block offset suitable for fil_io */
+	ulint* byte_offset)	/*<! out: L2 Cache block byte offset suitable for fil_io */
+{
+	*block_offset = fil_offset * fc->block_size * KILO_BYTE / UNIV_PAGE_SIZE;
+	*byte_offset = fil_offset * fc->block_size * KILO_BYTE - *block_offset * UNIV_PAGE_SIZE;
+}
+
+/******************************************************************//**
+Calc the L2 Cache block size in kb from the zip size
+@return	the L2 Cache block real size in kb */ 
+UNIV_INLINE
+ulint
+fc_calc_block_size(
+/*==================*/
+	ulint zip_size) /*<! in: L2 Cache block size in bytes */
+{
+	ulint real_block_size;
+	ulint fc_blk_size = fc_get_block_size();
+
+	if (zip_size == 0) {
+		real_block_size = PAGE_SIZE_KB;
+	} else if (zip_size < (fc_blk_size * KILO_BYTE)) {
+		real_block_size = fc_blk_size;
+	} else {
+		real_block_size = zip_size / KILO_BYTE;
+	}
+	
+	return real_block_size;
+}
+
+/******************************************************************//**
+Wait for space to write block, this function will not release the cache mutex */
+UNIV_INLINE
+void
+fc_wait_for_space(void)
+/*==================*/
+{    
+	ib_int64_t sig_count;
+	
+	ut_print_timestamp(stderr);
+	fprintf(stderr, " InnoDB: waiting space. write_off:%lu, flush_off:%lu, thread:%lu.\n", 
+		fc->write_off, fc->flush_off, (ulong)os_thread_get_curr_id());
+	
+	sig_count =os_event_reset(fc->wait_space_event);
+	flash_cache_mutex_exit();
+	os_event_wait_low(fc->wait_space_event, sig_count);
+
+	ut_print_timestamp(stderr);
+	
+	return;
+}
+
+/******************************************************************//**
+Wait for doublewrite async all launched , this function will release the cache mutex */
+UNIV_INLINE
+void
+fc_wait_for_aio_dw_launch(void)
+/*==================*/
+{    
+#ifdef UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE
+	ib_int64_t sig_count;
+	
+#ifdef UNIV_FLASH_CACHE_TRACE	
+	ut_print_timestamp(stderr);
+	fprintf(stderr, " InnoDB: L2 Cache waiting untill doublewrite launch async io.\n");
+#endif
+
+	sig_count =os_event_reset(fc->wait_doublewrite_event);
+	flash_cache_mutex_exit();
+	os_event_wait_low(fc->wait_doublewrite_event, sig_count);
+	
+#ifdef UNIV_FLASH_CACHE_TRACE
+	ut_print_timestamp(stderr);
+	fprintf(stderr, "InnoDB: L2 Cache doublewrite async io launched.\n");
+
+#endif
+
+	return;
+
+#endif
+}
+
+
+
+/******************************************************************//**
+Test if the doublewrite buf block data is corrupted
+@return	TRUE if the data is corrupted*/ 
+UNIV_INLINE
+ulint
+fc_dw_page_corrupted(
+/*==================*/
+	buf_block_t* dw_block) /*<! in: buf block to test if is corrupted */
+{
+	if (UNIV_UNLIKELY(memcmp(dw_block->frame + (FIL_PAGE_LSN + 4),
+		dw_block->frame + (UNIV_PAGE_SIZE - FIL_PAGE_END_LSN_OLD_CHKSUM + 4), 4))) {
+		ut_print_timestamp(stderr);
+		fprintf(stderr, " InnoDB: ERROR: The page to be written"
+			" seems corrupt!\n"
+			"InnoDB: The lsn fields do not match!"
+			" Noticed in the buffer pool\n"
+			"InnoDB: after posting and flushing"
+			" the doublewrite buffer.\n"
+			"InnoDB: Page buf fix count %lu,"
+			" io fix %lu, state %lu\n",
+			(ulong)dw_block->page.buf_fix_count,
+			(ulong)buf_block_get_io_fix(dw_block),
+			(ulong)buf_block_get_state(dw_block));
+		return TRUE;		
+	}	
+
+	return FALSE;
+}
+
+/******************************************************************//**
+Validate if the dirty page is the same with the srv_flash_cache_dirty, caller should 
+hold the cache mutex, at this time fc_flush_to_disk is not working */ 
+UNIV_INLINE
+void
+fc_validate(void)
+/*==================*/
+{
+	ulint z;
+	ulint fc_size;
+	ulint data_size;
+	ulint dirty_count = 0;
+	ulint used_count = 0;
+	fc_block_t* tmp_block;
+	
+	z = 0;
+	fc_size = fc_get_size();
+	
+	rw_lock_x_lock(&fc->hash_rwlock);		
+	while (z < fc_size) {
+		tmp_block = fc_get_block(z);
+
+		if (tmp_block == NULL) {
+			z++;
+			continue;
+		}
+
+		flash_block_mutex_enter(tmp_block->fil_offset);
+
+		ut_a(!(tmp_block->io_fix & IO_FIX_DOUBLEWRITE));
+		ut_a(!(tmp_block->io_fix & IO_FIX_FLUSH));		
+		
+		data_size = fc_block_get_data_size(tmp_block);
+		
+		if (tmp_block->state == BLOCK_READY_FOR_FLUSH) {
+			if (fc->write_round == fc->flush_round) {
+				if (tmp_block->fil_offset < fc->flush_off) {
+					fprintf(stderr, "tmpb %d: flushof %d\n",
+					 (int)tmp_block->fil_offset, (int)fc->flush_off);
+					fc_block_print(tmp_block);
+					fc_round_print();
+					ut_a(0);
+				}
+				
+				if (tmp_block->fil_offset >= fc->write_off) {
+					fprintf(stderr, "tmpb %d: writeoff %d\n", 
+					(int)tmp_block->fil_offset, (int)fc->write_off);
+					fc_block_print(tmp_block);
+					fc_round_print();
+					ut_a(0);
+				}
+			} else {
+				if ((tmp_block->fil_offset < fc->flush_off) 
+					&& (tmp_block->fil_offset >= fc->write_off)) {
+					fprintf(stderr, "tmpb %d: flushof %d, writeof %d\n", 
+						(int)tmp_block->fil_offset, (int)fc->flush_off, (int)fc->write_off);
+					fc_block_print(tmp_block);
+					fc_round_print();
+					ut_a(0);
+				}
+			}
+			
+			dirty_count += data_size;
+			used_count += data_size;
+		} else if ((tmp_block->state == BLOCK_READ_CACHE) 
+			|| (tmp_block->state == BLOCK_FLUSHED) ) {
+			
+			used_count += data_size;
+		} 
+		
+		flash_block_mutex_exit(tmp_block->fil_offset);
+
+		z += data_size;
+	}
+	
+	if (dirty_count != srv_flash_cache_dirty) {
+		ut_print_timestamp(stderr);
+		fprintf(stderr, "\nL2 Cache validate status: dirty:%lu-%lu,used:%lu-%lu, "
+			"dirty count is not equal with srv_flash_cache_dirty\n",
+			dirty_count, srv_flash_cache_dirty, used_count, srv_flash_cache_used);
+		ut_error;
+	}	
+	
+	if (used_count != srv_flash_cache_used) {
+		ut_print_timestamp(stderr);
+		fprintf(stderr, "\nL2 Cache validate status: dirty:%lu-%lu,used:%lu-%lu, "
+			"used count is not equal with srv_flash_cache_used\n",
+			dirty_count, srv_flash_cache_dirty, used_count, srv_flash_cache_used);
+	}
+	
+	rw_lock_x_unlock(&fc->hash_rwlock);
+}
+
+/******************************************************************//**
+Init the L2 Cache block when create L2 Cache */
+UNIV_INLINE
+fc_block_t*
+fc_block_init(
+/*==================*/
+	ulint fil_offset)	   /*<! in: the L2 Cache block fil_offset init to */
+{	
+
+	fc_block_t* tmp_block; 
+
+	tmp_block = (fc_block_t*)ut_malloc(sizeof(fc_block_t));
+	
+	tmp_block->fil_offset = fil_offset;  
+	tmp_block->size = 1;
+	tmp_block->is_v4_blk = FALSE;
+	tmp_block->raw_zip_size = 0;
+	tmp_block->hash = NULL;
+	tmp_block->space = 0;
+	tmp_block->offset = 0;
+	tmp_block->read_io_buf = NULL;
+	tmp_block->state = BLOCK_NOT_USED;
+	tmp_block->io_fix = IO_FIX_NO_IO; 
+	
+	mutex_create(PFS_NOT_INSTRUMENTED, &tmp_block->mutex, SYNC_DOUBLEWRITE);
+
+	fc->block_array[fil_offset].block = tmp_block;
+
+	return tmp_block;
+}
+
+/******************************************************************//**
+free the L2 Cache block */
+UNIV_INLINE
+void
+fc_block_free(
+/*==================*/
+	fc_block_t* block)	   /*<! in: the L2 Cache block to free */
+{	
+	ulint fil_offset;
+
+	fil_offset = block->fil_offset;
+
+	mutex_free(&(block->mutex));
+	ut_free((void*)block);
+
+	fc->block_array[fil_offset].block = NULL;
+}
+
+/**************************************************************//**
+Get flash cache block from block offset
+@return NULL */
+UNIV_INLINE
+fc_block_t*
+fc_get_block(
+/*=========*/
+ulint fil_offset) /*<! in: L2 Cache block offset in ssd */
+{
+	return fc->block_array[fil_offset].block;
+}
+
+/******************************************************************//**
+Print the L2 Cache block values */
+UNIV_INLINE
+void
+fc_block_print(
+/*==================*/
+	fc_block_t* block) /*<! in: L2 Cache block to print out */
+{	
+#ifdef UNIV_FLASH_CACHE_TRACE
+	ut_print_timestamp(fc->f_debug);
+	fprintf(fc->f_debug, " bs:%d, bzs:%d, st:%d, foff:%d, "
+		"fix:%d, sp:%d, of:%d\n", (int)block->size, 
+		(int)block->raw_zip_size, (int)block->state, (int)block->fil_offset,
+		(int)block->io_fix, (int)block->space, (int)block->offset);
+#endif
+}
+
+/******************************************************************//**
+Print the L2 Cache used blocks */
+UNIV_INLINE
+void
+fc_print_used(void)
+/*==================*/
+{	
+#ifdef UNIV_FLASH_CACHE_TRACE
+	//ut_print_timestamp(fc->f_debug);
+	//fprintf(fc->f_debug, " used:%lu, used_nocompress:%lu\n", 
+	//	(ulong)srv_flash_cache_used, (ulong)srv_flash_cache_used_nocompress);
+	ut_a(srv_flash_cache_used <= srv_flash_cache_used_nocompress);
+#endif
+}
+
+
+/******************************************************************//**
+Print the L2 Cache round/offset values */
+UNIV_INLINE
+void
+fc_round_print(void)
+/*==================*/
+{
+	ut_print_timestamp(stderr);
+	fprintf(stderr,
+		" InnoDB: L2 Cache round/offset info:\n "
+		"    current: write round: %lu flush round: %lu, "
+		"write offset: %lu, flush offset:%lu.\n ", 
+		(ulong)fc->write_round, (ulong)fc->flush_round, 
+		(ulong)fc->write_off, (ulong)fc->flush_off);
+}
+
+/******************************************************************//**
+Update L2 Cache status for innodb status or global status */
+UNIV_INLINE
+void
+fc_update_status(
+/*==================*/
+	ulint status_type) /*<! in: innodb status or global status*/
+
+{
+	flash_cache_stat_t* stat;
+
+	if (status_type == UPDATE_GLOBAL_STATUS) {
+		stat = &flash_cache_stat_global;
+	} else {
+		stat= &flash_cache_stat;
+	}
+
+	stat->n_pages_write = srv_flash_cache_write;
+	stat->n_pages_flush = srv_flash_cache_flush;
+	stat->n_pages_merge_write = srv_flash_cache_merge_write;
+	stat->n_pages_read = srv_flash_cache_read;
+	stat->n_pages_move = srv_flash_cache_move;
+	stat->n_pages_migrate = srv_flash_cache_migrate;
+	stat->last_printout_time = ut_time();
+
+	
+}
+
+
+#endif

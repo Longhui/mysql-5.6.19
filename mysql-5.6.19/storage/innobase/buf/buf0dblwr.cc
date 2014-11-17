@@ -403,7 +403,7 @@ buf_dblwr_init_or_load_pages(
 	}
 
 	if (fc_is_enabled()) {
-		trx_sys_multiple_tablespace_format = TRUE;
+		//trx_sys_multiple_tablespace_format = TRUE;
 		fc_start();
 		goto leave_func;
 	}
@@ -663,11 +663,14 @@ buf_dblwr_update(
 		buf_dblwr->b_reserved--;
 
 		if (buf_dblwr->b_reserved == 0) {
-			mutex_exit(&buf_dblwr->mutex);
-			/* This will finish the batch. Sync data files
-			to the disk. */
-			fil_flush_file_spaces(FIL_TABLESPACE);
-			mutex_enter(&buf_dblwr->mutex);
+
+			if (!fc_is_enabled()) {
+				mutex_exit(&buf_dblwr->mutex);
+				/* This will finish the batch. Sync data files
+				to the disk. */			
+				fil_flush_file_spaces(FIL_TABLESPACE);
+				mutex_enter(&buf_dblwr->mutex);				
+			}
 
 			/* We can now reuse the doublewrite memory buffer: */
 			buf_dblwr->first_free = 0;
@@ -1145,6 +1148,11 @@ retry:
 
 	mutex_exit(&buf_dblwr->mutex);
 
+	/* if L2 Cache is enabled, we only should write this page to Cache and sync */
+	if (fc_is_enabled()) {
+		fc_write_single_page(bpage, sync);
+	} 
+
 	/* Lets see if we are going to write in the first or second
 	block of the doublewrite buffer. */
 	if (i < TRX_SYS_DOUBLEWRITE_BLOCK_SIZE) {
@@ -1187,6 +1195,10 @@ retry:
 
 	/* Now flush the doublewrite buffer data to disk */
 	fil_flush(TRX_SYS_SPACE);
+
+	/* means not WRITE_BACK mode, or it's WRITE_BACK mode, but enable_write is turned off*/
+	if (fc_is_enabled())  
+		fc_block_remove_single_page(bpage);
 
 	/* We know that the write has been flushed to disk now
 	and during recovery we will find it in the doublewrite buffer

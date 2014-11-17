@@ -279,7 +279,7 @@ fc_flush_to_disk(
 			ut_error;
 		}
 
-		if (buf_page_is_corrupted(page, zip_size)) {
+		if (buf_page_is_corrupted(true, page, zip_size)) {
 			buf_page_print(page, zip_size, BUF_PAGE_PRINT_NO_CRASH);
 			ut_error;
 		}		

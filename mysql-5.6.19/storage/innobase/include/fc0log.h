@@ -75,7 +75,7 @@ struct fc_log_struct
 	int			file;			/*<! file handle */
 #endif
 	char*		log_file_path_name;
-	mutex_t		log_mutex;	/*!< mutex protecting fc_log_struct */
+	ib_mutex_t	log_mutex;	/*!< mutex protecting fc_log_struct */
 	byte*		buf;			/*<! log buffer(512 bytes) */
 	byte*		buf_unaligned;	/*<! unaligned log buffer */
 

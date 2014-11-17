@@ -1,0 +1,12 @@
+/**************************************************//**
+@file fc/fc0flu.ic
+Flash Cache for InnoDB
+
+Created	24/10/2013 Thomas Wen(wenzhenghu.zju@gmail.com)
+*******************************************************/
+
+#ifndef fc0flu_ic
+#define fc0flu_ic
+
+#endif
+

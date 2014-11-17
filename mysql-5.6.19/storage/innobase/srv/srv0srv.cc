@@ -1328,7 +1328,7 @@ srv_export_innodb_status(void)
 	mutex_enter(&srv_innodb_monitor_mutex);
 
 	if (fc_is_enabled()) {
-		ulint i;
+//		ulint i;
 		ulint distance;
 		ulint fc_size = fc_get_size();
 		ulint buf_read_delta = 0;
@@ -3018,12 +3018,13 @@ srv_fc_flush_thread(
 	ulint i;
 	ulint old_activity_count;
 	
-	mutex_enter(&kernel_mutex);
+//	srv_sys_mutex_enter();
 
-	slot = srv_table_reserve_slot(SRV_FLASH_CACHE);
-	++srv_n_threads_active[SRV_FLASH_CACHE];
+//	slot = srv_table_reserve_slot(SRV_FLASH_CACHE);
+//	++srv_n_threads_active[SRV_FLASH_CACHE];
 
-	mutex_exit(&kernel_mutex);
+//	srv_sys_mutex_exit();
+	slot = srv_reserve_slot(SRV_FLASH_CACHE);
 
 	flash_cache_mutex_enter();
 	fc_validate();
@@ -3037,7 +3038,7 @@ srv_fc_flush_thread(
 			fc_flush_test_and_dump_blkmeta(srv_fc_flush_last_dump);
 		}
 		
-		old_activity_count = srv_activity_count;
+		old_activity_count = srv_get_activity_count();
 		buf_get_total_stat(&buf_stat);
 		n_ios_very_old = log_sys->n_log_ios + buf_stat.n_pages_read + buf_stat.n_pages_written;
 
@@ -3066,10 +3067,10 @@ srv_fc_flush_thread(
 		}
 
 		buf_get_total_stat(&buf_stat);
-		n_pend_ios = buf_get_n_pending_ios() + log_sys->n_pending_writes;
+		n_pend_ios = buf_get_n_pending_read_ios() + log_sys->n_pending_writes;
 		n_ios = log_sys->n_log_ios + buf_stat.n_pages_read;
-		if (n_pend_ios < SRV_PEND_IO_THRESHOLD
-			&& (n_ios - n_ios_very_old < SRV_PAST_IO_ACTIVITY)) {
+		if (n_pend_ios < FC_SRV_PEND_IO_THRESHOLD
+			&& (n_ios - n_ios_very_old < FC_SRV_PAST_IO_ACTIVITY)) {
 
 			srv_flash_cache_thread_op_info = "flusing full flash cache pages in idle per 10 sec";
 			while(!srv_flash_cache_enable_write) {
@@ -3084,7 +3085,7 @@ srv_fc_flush_thread(
 
 		fc_flush_test_and_flush_log(srv_fc_flush_last_commit);
 
-		while (old_activity_count == srv_activity_count && 
+		while (false == srv_check_activity(old_activity_count) && 
 			srv_shutdown_state == SRV_SHUTDOWN_NONE) {
 			srv_flash_cache_thread_op_info = "flushing full flash cache pages in idle";
 			while(!srv_flash_cache_enable_write) {
@@ -3135,14 +3136,15 @@ srv_shutdown:
 		}
 	}
 
-	mutex_enter(&kernel_mutex);
+//	srv_sys_mutex_enter();
 
 	/* Decrement the active count. */
-	srv_suspend_thread(slot);
+//	srv_suspend_thread(slot);
 
-	slot->in_use = FALSE;
+//	slot->in_use = FALSE;
 
-	mutex_exit(&kernel_mutex);
+//	srv_sys_mutex_exit();
+	srv_free_slot(slot);
 
 	os_thread_exit(NULL);
 

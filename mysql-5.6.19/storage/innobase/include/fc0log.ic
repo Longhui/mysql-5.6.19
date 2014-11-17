@@ -1,0 +1,24 @@
+/**************************************************//**
+@file fc/fc0log.ic
+Flash Cache for InnoDB
+
+Created	24/10/2013 Thomas Wen (wenzhenghu.zju@gmail.com)
+*******************************************************/
+
+#ifndef fc0log_ic
+#define fc0log_ic
+
+/******************************************************************//**
+Reset fc_log dump_stat when change enable_dump flag from TRUE to FALSE */
+UNIV_INLINE
+void
+fc_log_reset_dump_stat(void)
+/*==============================*/
+{
+	fc_log->dump_stat->flush_offset = 0;
+	fc_log->dump_stat->flush_round = 0;
+	fc_log->dump_stat->write_offset = 0;
+	fc_log->dump_stat->write_round = 0;
+}
+
+#endif

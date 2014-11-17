@@ -114,7 +114,7 @@ fc_backup(
 	flash_cache_mutex_exit();
 	
 	if (flush_distance) {
-		sorted_blocks = ut_malloc(flush_distance * sizeof(*sorted_blocks));
+		sorted_blocks = (fc_block_t**)ut_malloc(flush_distance * sizeof(*sorted_blocks));
 		n_dirty_pages = 0;
 
 		/*collect dirty pages for backup, should get mutex */
@@ -272,15 +272,15 @@ fc_backup(
 				}
 
 				/* then write 1MB data to backup file */
-				offset_high = (file_offset >> (32 - KILO_BYTE_SHIFT));
-				offset_low  = ((file_offset << KILO_BYTE_SHIFT) & 0xFFFFFFFFUL);
-				if (os_file_write(bkp_file_path, bkp_fd, buf, offset_low, offset_high, 
+				//offset_high = (file_offset >> (32 - KILO_BYTE_SHIFT));
+				//offset_low  = ((file_offset << KILO_BYTE_SHIFT) & 0xFFFFFFFFUL);
+				if (os_file_write(bkp_file_path, bkp_fd, buf, file_offset * KILO_BYTE, 
 					buf_offset * KILO_BYTE) == 0) {
 					fc_bkp_print_io_error();
 					ut_free(sorted_blocks);
 					*success = FALSE;
 					os_file_close(bkp_fd);
-					os_file_delete(bkp_file_path);
+					os_file_delete(innodb_file_data_key, bkp_file_path);
 					fc_bkp_finish(unaligned_buf, compress_buf_unalign,
 							bkp_file_path, bkp_file_path_final);
 					return 0;
@@ -301,13 +301,13 @@ fc_backup(
 			ut_print_timestamp(stderr);
 			fprintf(stderr, " InnoDB: L2 Cache backup:blk metadata size %d\n", (int)blk_metas_size);
 #endif		
-			if (os_file_write(bkp_file_path, bkp_fd, blk_metas, offset_low, offset_high, 
+			if (os_file_write(bkp_file_path, bkp_fd, blk_metas, file_offset * KILO_BYTE, 
 					blk_metas_size) == 0) {
 				fc_bkp_print_io_error();
 				ut_free((void *)blk_metas);
 				*success = FALSE;
 				os_file_close(bkp_fd);
-				os_file_delete(bkp_file_path);
+				os_file_delete(innodb_file_data_key, bkp_file_path);
 				fc_bkp_finish(unaligned_buf, compress_buf_unalign,
 						bkp_file_path, bkp_file_path_final);
 				return 0;
@@ -326,12 +326,12 @@ fc_backup(
 #endif
 			ut_memcpy((void *)buf, (const void*)bkp_info, sizeof(fc_bkp_info_t));
 
-			if (os_file_write(bkp_file_path, bkp_fd, buf, 0, 0, KILO_BYTE) == 0) {
+			if (os_file_write(bkp_file_path, bkp_fd, buf, 0, KILO_BYTE) == 0) {
 				fc_bkp_print_io_error();
 				ut_free((void *)bkp_info);
 				*success = FALSE;
 				os_file_close(bkp_fd);
-				os_file_delete(bkp_file_path);
+				os_file_delete(innodb_file_data_key, bkp_file_path);
 				fc_bkp_finish(unaligned_buf, compress_buf_unalign,
 						bkp_file_path, bkp_file_path_final);
 				return 0;

@@ -5467,9 +5467,9 @@ i_s_flash_cache_fill(
 /*============*/
 	THD*		thd,	/*!< in: thread */
 	TABLE_LIST*	tables,	/*!< in/out: tables to fill */
-	COND*		cond)	/*!< in: condition (ignored) */
+	Item*		cond)	/*!< in: condition (ignored) */
 {
-    int i = 0;
+    ulint i = 0;
     char* table_name;
 	fc_block_t* block = NULL;
     TABLE*  table = (TABLE *) tables->table;
@@ -5482,7 +5482,7 @@ i_s_flash_cache_fill(
  
     DBUG_ENTER("i_s_flash_cache_fill");
     
-    if (srv_flash_cache_size == 0){
+    if (srv_flash_cache_size == 0) {
         DBUG_RETURN(0);
     }
     

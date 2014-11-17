@@ -3170,9 +3170,9 @@ innobase_change_buffering_inited_ok:
 
 	/* --------------------------------------------------*/
 
-	srv_flash_cache_size = (ulint) innobase_flash_cache_size;
+	srv_flash_cache_size = innobase_flash_cache_size;
 
-	srv_flash_cache_block_size = (ulint) innobase_flash_cache_block_size;
+	srv_flash_cache_block_size = innobase_flash_cache_block_size;
 
 	srv_file_flush_method_str = innobase_file_flush_method;
 

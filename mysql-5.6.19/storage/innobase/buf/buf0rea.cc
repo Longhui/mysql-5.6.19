@@ -36,6 +36,7 @@ Created 11/5/1995 Heikki Tuuri
 #include "log0recv.h"
 #include "trx0sys.h"
 #include "os0file.h"
+#include "fc0fc.h"
 #include "srv0start.h"
 #include "srv0srv.h"
 #include "mysql/plugin.h"
