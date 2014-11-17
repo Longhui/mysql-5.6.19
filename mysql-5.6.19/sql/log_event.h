@@ -37,6 +37,10 @@
 #include "rpl_utility.h"
 #include "hash.h"
 #include "rpl_tblmap.h"
+/* Flashback */
+#include "sql_string.h"
+#include "sql_string.cc"
+/* End */
 #endif
 
 #ifdef MYSQL_SERVER
@@ -48,7 +52,10 @@
 #endif
 
 /* Forward declarations */
+#ifndef MYSQL_CLIENT
 class String;
+#endif
+
 typedef ulonglong sql_mode_t;
 typedef struct st_db_worker_hash_entry db_worker_hash_entry;
 
@@ -715,7 +722,7 @@ enum Log_event_type
     Add new events here - right above this comment!
     Existing events (except ENUM_END_EVENT) should never change their numbers
   */
-
+  FLASHBACK_EVENT = 36,	
   ENUM_END_EVENT /* end marker */
 };
 
@@ -1262,6 +1269,17 @@ public:
   */
   uint8 checksum_alg;
 
+  //Flashback
+  my_bool is_flashback;
+  String output_buf;
+
+  void free_output_buffer()
+  {
+    if (!output_buf.is_empty())
+    {
+      output_buf.free();
+    }
+  }
   static void *operator new(size_t size)
   {
     return (void*) my_malloc((uint)size, MYF(MY_WME|MY_FAE));
@@ -1328,7 +1346,15 @@ public:
   }
   Log_event(const char* buf, const Format_description_log_event
             *description_event);
-  virtual ~Log_event() { free_temp_buf();}
+  virtual ~Log_event()
+  {
+    free_temp_buf();
+	/* Flashback */
+#ifdef MYSQL_CLIENT
+	free_output_buffer();
+#endif
+	/* End */
+  } 
   void register_temp_buf(char* buf) { temp_buf = buf; }
   void free_temp_buf()
   {
@@ -2111,12 +2137,16 @@ public:
     Q_MASTER_DATA_WRITTEN_CODE to the slave's server binlog.
   */
   uint32 master_data_written;
+
   /*
     number of updated databases by the query and their names. This info
     is requested by both Coordinator and Worker.
   */
   uchar mts_accessed_dbs;
   char mts_accessed_db_names[MAX_DBS_IN_EVENT_MTS][NAME_LEN];
+
+  //Flashback
+  bool flashback_event; 
 
 #ifdef MYSQL_SERVER
 
@@ -2185,7 +2215,8 @@ public:
     if (data_buf)
       my_free(data_buf);
   }
-  Log_event_type get_type_code() { return QUERY_EVENT; }
+  //Flashback
+  Log_event_type get_type_code() { return flashback_event ? FLASHBACK_EVENT: QUERY_EVENT; }
 #ifdef MYSQL_SERVER
   bool write(IO_CACHE* file);
   virtual bool write_post_header_for_derived(IO_CACHE* file) { return FALSE; }
@@ -4053,12 +4084,14 @@ public:
 #ifdef MYSQL_CLIENT
   /* not for direct call, each derived has its own ::print() */
   virtual void print(FILE *file, PRINT_EVENT_INFO *print_event_info)= 0;
+  void exchange_update_rows(PRINT_EVENT_INFO *print_event_info, uchar *rows_buff); // Flashback
   void print_verbose(IO_CACHE *file,
                      PRINT_EVENT_INFO *print_event_info);
   size_t print_verbose_one_row(IO_CACHE *file, table_def *td,
                                PRINT_EVENT_INFO *print_event_info,
                                MY_BITMAP *cols_bitmap,
-                               const uchar *ptr, const uchar *prefix);
+                               const uchar *ptr, const uchar *prefix,
+                               const my_bool only_parse = 0); //Flashback
 #endif
 
 #ifdef MYSQL_SERVER
@@ -4203,6 +4236,7 @@ protected:
   uchar    *m_rows_buf;		/* The rows in packed format */
   uchar    *m_rows_cur;		/* One-after the end of the data */
   uchar    *m_rows_end;		/* One-after the end of the allocated space */
+  size_t   m_rows_before_size;  /* The length before m_rows_buf, for Flashback */
 
   flag_set m_flags;		/* Flags for row-level events */
 
@@ -4839,7 +4873,11 @@ private:
   char * m_rows_query;
 };
 
-
+//Flashback
+static inline char *copy_event_cache_to_string_and_reinit(IO_CACHE *cache, size_t *bytes_in_cache)
+{
+  return my_b_copy_to_string(cache, bytes_in_cache);
+}
 
 static inline bool copy_event_cache_to_file_and_reinit(IO_CACHE *cache,
                                                        FILE *file,

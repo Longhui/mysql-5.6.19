@@ -369,6 +369,9 @@ inline int hexchar_to_int(char c)
 #define IS_TABLESPACES_NODEGROUP_ID       7
 #define IS_TABLESPACES_TABLESPACE_COMMENT 8
 
+#define FLASHBACK_DB "#bak_database"
+#define FLASHBACK_TBL_PREFIX "#bak_table"
+
 #endif /* MYSQL_SERVER */
 
 #endif /* MYSQL_CLIENT */

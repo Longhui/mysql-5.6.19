@@ -51,7 +51,7 @@ static void warning(const char *format, ...) ATTRIBUTE_FORMAT(printf, 1, 2);
 #include "sql_common.h"
 #include "my_dir.h"
 #include <welcome_copyright_notice.h> // ORACLE_WELCOME_COPYRIGHT_NOTICE
-#include "sql_string.h"
+//#include "sql_string.h"
 #include "my_decimal.h"
 #include "rpl_constants.h"
 
@@ -67,6 +67,10 @@ using std::max;
 
 
 #define CLIENT_CAPABILITIES	(CLIENT_LONG_PASSWORD | CLIENT_LONG_FLAG | CLIENT_LOCAL_FILES)
+
+/* Flashback */
+DYNAMIC_ARRAY binlog_events;
+/* End */
 
 char server_version[SERVER_VERSION_LENGTH];
 ulong server_id = 0;
@@ -96,7 +100,7 @@ static const char* default_dbug_option = "d:t:o,/tmp/mysqlbinlog.trace";
 #endif
 static const char *load_default_groups[]= { "mysqlbinlog","client",0 };
 
-static my_bool one_database=0, disable_log_bin= 0;
+static my_bool one_database=0, one_table=0, disable_log_bin= 0;
 static my_bool opt_hexdump= 0;
 const char *base64_output_mode_names[]=
 {"NEVER", "AUTO", "UNSPEC", "DECODE-ROWS", NullS};
@@ -118,6 +122,7 @@ static enum enum_remote_proto {
 } opt_remote_proto= BINLOG_LOCAL;
 static char *opt_remote_proto_str= 0;
 static char *database= 0;
+static char *table= 0;
 static char *output_file= 0;
 static my_bool force_opt= 0, short_form= 0;
 static my_bool debug_info_flag, debug_check_flag;
@@ -153,6 +158,9 @@ static ulonglong rec_count= 0;
 static ushort binlog_flags = 0; 
 static MYSQL* mysql = NULL;
 static char* dirname_for_local_load= 0;
+
+static my_bool flashback_opt; // Flashback
+
 static uint opt_server_id_bits = 0;
 static ulong opt_server_id_mask = 0;
 Sid_map *global_sid_map= NULL;
@@ -712,6 +720,21 @@ static bool shall_skip_database(const char *log_dbname)
          strcmp(log_dbname, database);
 }
 
+/**
+  Indicates whether the given table should be filtered out,
+  according to the --table=X option.
+
+  @param log_tbname Name of table.
+
+  @return nonzero if the table with the given name should be
+  filtered out, 0 otherwise.
+*/
+static bool shall_skip_table(const char *log_tbname)
+{
+  return one_table &&
+         (log_tbname != NULL) &&
+         strcmp(log_tbname, table);
+}
 
 /**
   Checks whether the given event should be filtered out,
@@ -843,6 +866,8 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
   Exit_status retval= OK_CONTINUE;
   IO_CACHE *const head= &print_event_info->head_cache;
 
+  ev->is_flashback= flashback_opt; // Flashback
+
   /*
     Format events are not concerned by --offset and such, we always need to
     read them to be able to process the wanted events.
@@ -880,7 +905,8 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       goto end;
     }
     if (!short_form)
-      my_b_printf(&print_event_info->head_cache,
+		if (!flashback_opt) //Flashback
+      		my_b_printf(&print_event_info->head_cache,
                   "# at %s\n",llstr(pos,ll_buff));
 
     if (!opt_hexdump)
@@ -1144,7 +1170,8 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
     case TABLE_MAP_EVENT:
     {
       Table_map_log_event *map= ((Table_map_log_event *)ev);
-      if (shall_skip_database(map->get_db_name()))
+      if (shall_skip_database(map->get_db_name()) 
+		  || shall_skip_table(map->get_table_name()))
       {
         print_event_info->skipped_event_in_transaction= true;
         print_event_info->m_table_map_ignored.set_table(map->get_table_id(), map);
@@ -1342,10 +1369,22 @@ Exit_status process_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
       if (head->error == -1)
         goto err;
     }
-    /* Flush head cache to result_file for every event */
-    if (copy_event_cache_to_file_and_reinit(&print_event_info->head_cache,
+
+	if (ev && ev->get_type_code() == XID_EVENT)
+	{
+	  size_t bytes_in_cache= 0;
+      char *buff= 0;
+      buff= copy_event_cache_to_string_and_reinit(&print_event_info->head_cache,
+	  											&bytes_in_cache);
+      ev->output_buf.append(buff, bytes_in_cache);
+	}
+	else
+	{
+		/* Flush head cache to result_file for every event */
+    	if (copy_event_cache_to_file_and_reinit(&print_event_info->head_cache,
                                             result_file, stop_never /* flush result_file */))
-      goto err;
+      		goto err;
+	}
   }
 
   goto end;
@@ -1360,6 +1399,19 @@ end:
   */
   if (ev)
   {
+
+	/* Flashback */
+	if(!ev->output_buf.is_empty())
+	{
+	  String *tmp_str= new String[1];
+	  tmp_str->copy(ev->output_buf);
+	  (void)push_dynamic(&binlog_events, (uchar*)tmp_str);
+	  if (!flashback_opt)
+		printf("%s", ev->output_buf.ptr());
+	  ev->free_output_buffer();
+	}
+	/* End */
+
     if (opt_remote_proto != BINLOG_LOCAL)
       ev->temp_buf= 0;
     if (destroy_evt) /* destroy it later if not set (ignored table map) */
@@ -1469,6 +1521,11 @@ static struct my_option my_long_options[] =
    "statements, output is to log files.",
    &raw_mode, &raw_mode, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0,
    0, 0},
+   /* Flashback */
+  {"flashback", 'B', "Flashback data to start_postition or start_datetime.",
+   &flashback_opt, &flashback_opt, 0, GET_BOOL, NO_ARG, 0, 0, 0, 0,
+   0, 0},
+   /* End */
   {"result-file", 'r', "Direct output to a given file. With --raw this is a "
    "prefix for the file names.",
    &output_file, &output_file, 0, GET_STR, REQUIRED_ARG,
@@ -1542,6 +1599,9 @@ static struct my_option my_long_options[] =
    &stop_position, &stop_position, 0, GET_ULL,
    REQUIRED_ARG, (longlong)(~(my_off_t)0), BIN_LOG_HEADER_SIZE,
    (ulonglong)(~(my_off_t)0), 0, 0, 0},
+  {"table", 'T', "List entries for just this table (local log only).",
+   &table, &table, 0, GET_STR_ALLOC, REQUIRED_ARG,
+   0, 0, 0, 0, 0, 0},
   {"to-last-log", 't', "Requires -R. Will not stop at the end of the "
    "requested binlog but rather continue printing until the end of the last "
    "binlog of the MySQL server. If you send the output to the same MySQL "
@@ -1661,6 +1721,7 @@ static void cleanup()
 {
   my_free(pass);
   my_free(database);
+  my_free(table);
   my_free(host);
   my_free(user);
   my_free(dirname_for_local_load);
@@ -1734,6 +1795,9 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
   case 'd':
     one_database = 1;
     break;
+  case 'T':
+    one_table = 1;
+    break;
   case 'p':
     if (argument == disabled_my_option)
       argument= (char*) "";                     // Don't require password
@@ -1753,6 +1817,11 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
     opt_remote_alias= 1;
     opt_remote_proto= BINLOG_DUMP_NON_GTID;
     break;
+  /* Flashback */
+  case 'B':
+	flashback_opt= 1;
+	break;
+  /* End */
   case OPT_REMOTE_PROTO:
     opt_remote_proto= (enum_remote_proto)
       (find_type_or_exit(argument, &remote_proto_typelib, opt->name) - 1);
@@ -1922,15 +1991,20 @@ static Exit_status dump_log_entries(const char* logname)
             "to an event in the middle of a statement. The event(s) "
             "from the partial statement have not been written to output.");
 
+  /* Flashback */
+  if (!flashback_opt) {
   /* Set delimiter back to semicolon */
-  if (!raw_mode)
-  {
-    if (print_event_info.skipped_event_in_transaction)
-      fprintf(result_file, "COMMIT /* added by mysqlbinlog */%s\n", print_event_info.delimiter);
+	  if (!raw_mode) {
+    	if (print_event_info.skipped_event_in_transaction)
+      		fprintf(result_file, "COMMIT /* added by mysqlbinlog */%s\n", 
+      			print_event_info.delimiter);
 
-    fprintf(result_file, "DELIMITER ;\n");
-    strmov(print_event_info.delimiter, ";");
+    	fprintf(result_file, "DELIMITER ;\n");
+    	strmov(print_event_info.delimiter, ";");
+  	}
   }
+  /* End */
+  
   DBUG_RETURN(rc);
 }
 
@@ -2817,6 +2891,12 @@ int main(int argc, char** argv)
   DBUG_ENTER("main");
   DBUG_PROCESS(argv[0]);
 
+  /* Flashback */
+  if(my_init_dynamic_array(&binlog_events, sizeof(String), 1024, 1024)) {
+	exit(1);
+  }
+  /* End */
+
   my_init_time(); // for time functions
    /*
     A pointer of type Log_event can point to
@@ -2920,6 +3000,21 @@ int main(int argc, char** argv)
     start_position= BIN_LOG_HEADER_SIZE;
   }
 
+  /* Flashback */
+  if(flashback_opt)
+  {
+	  int i= 0;
+	  for (i=  binlog_events.elements; i > 0; --i)
+	  {
+		String *event_str= dynamic_element(&binlog_events, i - 1, String*); 
+		printf("%s", event_str->ptr());
+	  }
+	  delete_dynamic(&binlog_events);
+	  /* Set delimiter back to semicolon */
+	  fprintf(result_file, "DELIMITER ;\n");
+  }
+	/* End */
+ 
   if (!raw_mode)
   {
     /*

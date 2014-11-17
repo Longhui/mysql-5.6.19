@@ -419,8 +419,8 @@ MY_STAT *my_stat(const char *path, MY_STAT *stat_area, myf my_flags)
     if (! my_win_stat(path, stat_area) )
       DBUG_RETURN(stat_area);
 #endif
-  DBUG_PRINT("error",("Got errno: %d from stat", errno));
-  my_errno= errno;
+ // if (my_thread_var)	
+  	my_errno= errno;
   if (m_used)					/* Free if new area */
     my_free(stat_area);
 
@@ -428,7 +428,8 @@ error:
   if (my_flags & (MY_FAE+MY_WME))
   {
     char errbuf[MYSYS_STRERROR_SIZE];
-    my_error(EE_STAT, MYF(ME_BELL+ME_WAITTANG), path,
+  //  if (my_thread_var)	
+      my_error(EE_STAT, MYF(ME_BELL+ME_WAITTANG), path,
              my_errno, my_strerror(errbuf, sizeof(errbuf), my_errno));
     DBUG_RETURN((MY_STAT *) NULL);
   }

@@ -110,6 +110,7 @@ extern ulint  	srv_fc_flush_last_dump;
 extern ulint 	srv_fc_flush_should_commit_log_flush;
 extern ulint 	srv_fc_flush_should_commit_log_write;
 extern my_bool 	srv_flash_cache_enable_compress;
+extern my_bool 	srv_fc_flush_thread_exited;
 extern ulong 	srv_flash_cache_compress_algorithm;
 extern my_bool 	srv_flash_cache_decompress_use_malloc;
 extern ulong 	srv_flash_cache_version;

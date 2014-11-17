@@ -8944,6 +8944,34 @@ int THD::binlog_query(THD::enum_binlog_query_type qtype, char const *query_arg,
       sp_runtime_ctx == NULL && !binlog_evt_union.do_union)
     issue_unsafe_warnings();
 
+  //Flashback
+  if (flashback_stmt[0]  && variables.sql_log_flashback)
+  {
+    int stmt_id;
+    int stmt_num= flashback_stmt[0];
+    char *stmt_pos= &flashback_stmt[1];
+
+    for (stmt_id= 0; stmt_id < stmt_num; stmt_id++)
+    {
+      Query_log_event info(this, stmt_pos, strlen(stmt_pos), false, true, false, 0);
+      info.flashback_event= TRUE;
+
+      if (mysql_bin_log.write_event(&info))
+      {
+        sql_print_warning("write flashback statement %s error.\n", flashback_stmt);
+        break;
+      }
+
+      stmt_pos+= strlen(stmt_pos) + 1;
+    }
+
+    flashback_stmt[0]= '\0';
+  }
+
+  /* this is a flashback thd, not need to record the original statement*/
+  if (flashback_thd)
+    DBUG_RETURN(0);
+
   switch (qtype) {
     /*
       ROW_QUERY_TYPE means that the statement may be logged either in

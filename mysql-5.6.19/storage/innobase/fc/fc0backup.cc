@@ -151,7 +151,7 @@ fc_backup(
      		ulint len_tmp;
       		ulint len_final;
 			ut_print_timestamp(stderr);
-			fprintf(stderr, " InnoDB: flash cache is backuping,dirty_page:%d ...\n", (int)n_dirty_pages);
+			fprintf(stderr, " InnoDB: flash cache is backuping, dirty_page:%d ...\n", (int)n_dirty_pages);
 			
 			fc_block_sort(sorted_blocks, n_dirty_pages, ASCENDING);
 
@@ -161,12 +161,18 @@ fc_backup(
 			/* alloc memory for backup */
 			bkp_info = (fc_bkp_info_t*)ut_malloc(sizeof(fc_bkp_info_t));
 			blk_metas = (fc_bkp_blkmeta_t*)ut_malloc(n_dirty_pages * sizeof(fc_bkp_blkmeta_t));
+
+#ifdef UNIV_FLASH_CACHE_TRACE
+			ut_print_timestamp(stderr);
+			fprintf(stderr, " InnoDB: L2 Cache backup:alloced blk metadata size %d\n", 
+				(int)n_dirty_pages * sizeof(fc_bkp_blkmeta_t));
+#endif				
 			
 			len_tmp = strlen(bkp_dir) + sizeof("/ib_fc_backup_creating");
 			len_final = strlen(bkp_dir) + sizeof("/ib_fc_backup");
 			bkp_file_path = (char *)ut_malloc(len_tmp);
 			bkp_file_path_final = (char *)ut_malloc(len_final);
-			ut_snprintf(bkp_file_path, len_final, 
+			ut_snprintf(bkp_file_path, len_tmp, 
 				"%s/%s", bkp_dir, "ib_fc_backup_creating");
 			ut_snprintf(bkp_file_path_final, len_final, 
 				"%s/%s", bkp_dir, "ib_fc_backup");
@@ -285,6 +291,8 @@ fc_backup(
 							bkp_file_path, bkp_file_path_final);
 					return 0;
 				}
+
+				fprintf(stderr,".%.0f%%.", (i * 100.0) / n_dirty_pages);
 				
 				file_offset += buf_offset;
 			}	

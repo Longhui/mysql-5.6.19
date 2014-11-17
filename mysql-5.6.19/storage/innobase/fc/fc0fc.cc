@@ -78,6 +78,8 @@ UNIV_INTERN ulong  	srv_flash_cache_write_mode = WRITE_BACK;
 UNIV_INTERN my_bool srv_flash_cache_fast_shutdown = TRUE;
 /* whether use quicklz or zlib to compress the uncompress InnoDB data page */
 UNIV_INTERN my_bool srv_flash_cache_enable_compress = TRUE;
+/* whether flush thread has been exited when shutdown */
+UNIV_INTERN my_bool srv_fc_flush_thread_exited = FALSE;
 /* snappy, quicklz or zlib use to compress the uncompress InnoDB data page */
 UNIV_INTERN ulong 	srv_flash_cache_compress_algorithm = FC_BLOCK_COMPRESS_SNAPPY;
 /* whether use malloc or buf_block_alloc to buffer the compress InnoDB data page */
@@ -689,16 +691,16 @@ fc_load(void)
 	 * write/flush_offset/round, it means that the L2 Cache shutdown correctly
 	 * no need to do recovery job
 	 */
-	flash_cache_log_mutex_enter();
-	if (fc_log->been_shutdown == TRUE) {
+	//flash_cache_log_mutex_enter();
+	//if (fc_log->been_shutdown == TRUE) {
 		srv_flash_cache_load_from_dump_file = TRUE;		
 
 #ifdef UNIV_FLASH_CACHE_TRACE
 		ut_print_timestamp(stderr);
 		fprintf(stderr," InnoDB: L2 Cache shutdown correctly, no need to do recovery.\n");
 #endif
-	}
-	flash_cache_log_mutex_exit();	
+	//}
+	//flash_cache_log_mutex_exit();	
 
 }
 
@@ -734,7 +736,12 @@ fc_test_and_commit_log(void)
 	flash_cache_mutex_enter();
 
 	ut_a(fc->is_doing_doublewrite == 1);
-	ut_a(srv_fc_flush_should_commit_log_write != 0);
+
+#ifdef UNIV_FLASH_CACHE_TRACE
+	ut_a((srv_fc_flush_should_commit_log_write != 0)
+	// this means at this time enable_write has been set off
+		|| (srv_flash_cache_enable_write == 0));
+#endif
 
 	/* this function will release the fc mutex */
 	fc_log_commit_when_update_writeoff();
@@ -1488,6 +1495,8 @@ fc_block_remove_single_page(
 	ulint free_block;
 	ulint removed_pages = 0;
 	fc_block_t* out_block = NULL;
+
+	ut_a(bpage);
 
 	space = mach_read_from_4(((buf_block_t*) bpage)->frame
 			+ FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID);

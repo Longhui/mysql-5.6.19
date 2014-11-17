@@ -189,10 +189,10 @@ fc_log_create(void)
 		/* don't allow to change cache block size */ 
 		if (srv_flash_cache_block_size != fc_log->blk_size) {
 			ut_print_timestamp(stderr);
-			fprintf(stderr," InnoDB: Error!!!cann't change L2 Cache block size from"
-				"%lu to %lu! we can't continue.\n", fc_log->blk_size, 
+			fprintf(stderr," InnoDB: Warning!!! changed L2 Cache block size from"
+				"%lu to %lu! .\n", fc_log->blk_size, 
 				srv_flash_cache_block_size);
-			ut_error;
+			//ut_error;
 		} 
 
 		/* don't allow to change compress algorithm */ 

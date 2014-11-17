@@ -255,6 +255,13 @@ SET @broken_events = (select count(*) from mysql.event where db='performance_sch
 
 SET @broken_pfs= (select @broken_tables + @broken_views + @broken_routines + @broken_events);
 
+SET @cmd= "CREATE DATABASE `#bak_database` character set utf8";
+
+SET @str = IF(@broken_pfs = 0, @cmd, 'SET @dummy = 0');
+PREPARE stmt FROM @str;
+EXECUTE stmt;
+DROP PREPARE stmt;
+
 --
 -- The performance schema database.
 -- Only drop and create the database if this is safe (no broken_pfs).

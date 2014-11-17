@@ -890,7 +890,8 @@ try_again:
 	to proceed. */
 	mutex_exit(&buf_dblwr->mutex);
 
-	if (WRITE_BACK == srv_flash_cache_write_mode && fc_is_enabled() && srv_flash_cache_enable_write) {
+	if (WRITE_BACK == srv_flash_cache_write_mode && fc_is_enabled() 
+		&& srv_flash_cache_enable_write) {
 		/* Write doublewrite buffer data to flash cache */
 		fc_write(buf_dblwr);
 		return;
@@ -1077,9 +1078,10 @@ for single page flushes. If all the buffers allocated for single page
 flushes in the doublewrite buffer are in use we wait here for one to
 become free. We are guaranteed that a slot will become free because any
 thread that is using a slot must also release the slot before leaving
-this function. */
+this function.
+@return TRUE if single write has done by L2 Cache */
 UNIV_INTERN
-void
+bool
 buf_dblwr_write_single_page(
 /*========================*/
 	buf_page_t*	bpage,	/*!< in: buffer block to write */
@@ -1154,7 +1156,7 @@ retry:
 		&& srv_flash_cache_enable_write) {
 		/* Write doublewrite buffer data to flash cache */
 		fc_write_single_page(bpage, sync);
-		return;
+		return TRUE;
 	}
 
 	/* Lets see if we are going to write in the first or second
@@ -1208,5 +1210,7 @@ retry:
 	and during recovery we will find it in the doublewrite buffer
 	blocks. Next do the write to the intended position. */
 	buf_dblwr_write_block_to_datafile(bpage, sync);
+
+	return FALSE;
 }
 #endif /* !UNIV_HOTBACKUP */

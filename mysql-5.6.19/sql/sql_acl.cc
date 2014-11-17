@@ -6284,6 +6284,11 @@ bool check_grant(THD *thd, ulong want_access, TABLE_LIST *tables,
   DBUG_ENTER("check_grant");
   DBUG_ASSERT(number > 0);
 
+  if (thd->flashback_thd)
+  {
+	  return FALSE;
+  }
+
   /*
     Walk through the list of tables that belong to the query and save the
     requested access (orig_want_privilege) to be able to use it when

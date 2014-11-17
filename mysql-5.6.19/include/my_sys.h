@@ -559,6 +559,7 @@ extern my_error_reporter my_charset_error_reporter;
 
 /* tell write offset in the SEQ_APPEND cache */
 int      my_b_copy_to_file(IO_CACHE *cache, FILE *file);
+char*    my_b_copy_to_string(IO_CACHE *cache, size_t *bytes_in_cache); // Flashback
 my_off_t my_b_append_tell(IO_CACHE* info);
 my_off_t my_b_safe_tell(IO_CACHE* info); /* picks the correct tell() */
 

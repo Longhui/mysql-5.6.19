@@ -116,7 +116,7 @@ become free. We are guaranteed that a slot will become free because any
 thread that is using a slot must also release the slot before leaving
 this function. */
 UNIV_INTERN
-void
+bool
 buf_dblwr_write_single_page(
 /*========================*/
 	buf_page_t*	bpage,	/*!< in: buffer block to write */

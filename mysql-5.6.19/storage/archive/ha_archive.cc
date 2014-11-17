@@ -261,7 +261,10 @@ int archive_discover(handlerton *hton, THD* thd, const char *db,
   if (!(azopen(&frm_stream, az_file, O_RDONLY|O_BINARY)))
   {
     if (errno == EROFS || errno == EACCES)
-      DBUG_RETURN(my_errno= errno);
+	    if (my_thread_var)	
+          DBUG_RETURN(my_errno= errno);
+		else
+	      DBUG_RETURN(errno);	
     DBUG_RETURN(HA_ERR_CRASHED_ON_USAGE);
   }
 
@@ -277,6 +280,7 @@ int archive_discover(handlerton *hton, THD* thd, const char *db,
 
   DBUG_RETURN(0);
 err:
+	if (my_thread_var)
   my_errno= 0;
   DBUG_RETURN(1);
 }

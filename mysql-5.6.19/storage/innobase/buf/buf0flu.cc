@@ -718,7 +718,7 @@ buf_flush_write_complete(
 	buf_pool_t*	buf_pool = buf_pool_from_bpage(bpage);
 
 	ut_ad(bpage);
-
+	
 	buf_flush_remove(bpage);
 
 	flush_type = buf_page_get_flush_type(bpage);
@@ -881,6 +881,7 @@ buf_flush_write_block_low(
 	buf_flush_t	flush_type,	/*!< in: type of flush */
 	bool		sync)		/*!< in: true if sync IO request */
 {
+    bool	by_l2cache	= FALSE;
 	ulint	zip_size	= buf_page_get_zip_size(bpage);
 	page_t*	frame		= NULL;
 
@@ -961,17 +962,17 @@ buf_flush_write_block_low(
 		       zip_size ? zip_size : UNIV_PAGE_SIZE,
 		       frame, bpage);
 	} else if (flush_type == BUF_FLUSH_SINGLE_PAGE) {
-		buf_dblwr_write_single_page(bpage, sync);
+		by_l2cache = buf_dblwr_write_single_page(bpage, sync);
 	} else {
 		ut_ad(!sync);
 		buf_dblwr_add_to_batch(bpage);
 	}
 
-	/* When doing single page flushing the IO is done synchronously
+	/* When doing single page flushing,  the IO is done synchronously
 	and we flush the changes to disk only for the tablespace we
 	are working on. */
-	if ((!fc_is_enabled()) && sync) {
-		ut_ad(flush_type == BUF_FLUSH_SINGLE_PAGE);
+	if ((!by_l2cache) && sync) {
+		ut_a(flush_type == BUF_FLUSH_SINGLE_PAGE);
 		fil_flush(buf_page_get_space(bpage));
 		buf_page_io_complete(bpage, sync);
 	}

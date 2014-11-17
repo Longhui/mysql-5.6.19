@@ -7650,6 +7650,15 @@ simple_rename_or_index_change(THD *thd, TABLE_LIST *table_list,
       DBUG_RETURN(true);
     close_all_tables_for_name(thd, table->s, true, NULL);
 
+	//Flashback
+	if (thd->variables.sql_log_flashback)
+	{
+	  snprintf(thd->flashback_stmt, sizeof(thd->flashback_stmt), 
+	  	"%c%s.%s:RENAME TABLE `%s`.`%s` TO `%s`.`%s`", '\1', 
+	  	alter_ctx->new_db, alter_ctx->new_alias, alter_ctx->new_db, 
+	  	alter_ctx->new_alias, alter_ctx->db, alter_ctx->table_name);
+	}
+
     if (mysql_rename_table(old_db_type, alter_ctx->db, alter_ctx->table_name,
                            alter_ctx->new_db, alter_ctx->new_alias, 0))
       error= -1;
@@ -8578,8 +8587,29 @@ bool mysql_alter_table(THD *thd,char *new_db, char *new_name,
     goto err_with_mdl;
   }
 
+  if (thd->variables.sql_log_flashback) {
+
+    char new_name_buff[FN_REFLEN + 1];
+      
+    ulonglong micro_time = my_micro_time();
+    snprintf(new_name_buff, sizeof(new_name_buff), "%s_%llu", 
+		FLASHBACK_TBL_PREFIX, micro_time);
+
+    int len= snprintf(thd->flashback_stmt, sizeof(thd->flashback_stmt), 
+		"%c%s.%s:RENAME TABLE `%s`.`%s` TO `%s`.`%s`", '\2', 
+		alter_ctx.db, alter_ctx.table_name, FLASHBACK_DB, new_name_buff, 
+		alter_ctx.db, alter_ctx.table_name);
+
+    snprintf(&thd->flashback_stmt[len + 1], sizeof(thd->flashback_stmt) - len - 1, 
+		"%s.%s:DROP TABLE `%s`.`%s`", alter_ctx.db, alter_ctx.table_name, 
+		alter_ctx.db, alter_ctx.table_name);
+
+    (void) mysql_rename_table(old_db_type, alter_ctx.db, backup_name, 
+		FLASHBACK_DB, new_name_buff, FN_FROM_IS_TMP);
+
+  } 
   // ALTER TABLE succeeded, delete the backup of the old table.
-  if (quick_rm_table(thd, old_db_type, alter_ctx.db, backup_name, FN_IS_TMP))
+  else if (quick_rm_table(thd, old_db_type, alter_ctx.db, backup_name, FN_IS_TMP))
   {
     /*
       The fact that deletion of the backup failed is not critical

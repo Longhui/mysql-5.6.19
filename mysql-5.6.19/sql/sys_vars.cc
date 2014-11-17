@@ -1499,6 +1499,12 @@ static Sys_var_mybool Sys_log_bin(
        "log_bin", "Whether the binary log is enabled",
        READ_ONLY GLOBAL_VAR(opt_bin_log), NO_CMD_LINE, DEFAULT(FALSE));
 
+static Sys_var_mybool Sys_log_flashback(
+       "sql_log_flashback", "sql_log_flashback",
+       SESSION_VAR(sql_log_flashback), CMD_LINE(OPT_ARG),
+       DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG, NULL,
+       NULL);
+
 static Sys_var_ulong Sys_rpl_stop_slave_timeout(
        "rpl_stop_slave_timeout",
        "Timeout in seconds to wait for slave to stop before returning a "

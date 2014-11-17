@@ -2912,6 +2912,14 @@ case SQLCOM_PREPARE:
     TABLE_LIST *create_table= first_table;
     TABLE_LIST *select_tables= lex->create_last_non_select_table->next_global;
 
+    if (thd->variables.sql_log_flashback)
+    {
+      snprintf(thd->flashback_stmt, sizeof(thd->flashback_stmt), 
+	  	"%c%s.%s:DROP TABLE `%s`.`%s`", '\1', 
+	    create_table->db, create_table->table_name, 
+	    create_table->db, create_table->table_name);
+    }
+
     /*
       Code below (especially in mysql_create_table() and select_create
       methods) may modify HA_CREATE_INFO structure in LEX, so we have to
@@ -3248,6 +3256,15 @@ end_with_restore_list:
           check_grant(thd, INSERT_ACL | CREATE_ACL, &new_list, FALSE, 1,
                       FALSE)))
         goto error;
+    }
+
+    if (thd->variables.sql_log_flashback)
+    {
+      snprintf(thd->flashback_stmt, sizeof(thd->flashback_stmt), 
+	  	"%c%s.%s:RENAME TABLE `%s`.`%s` TO `%s`.`%s`", '\1', 
+	  	first_table->next_local->db, first_table->next_local->table_name, 
+	  	first_table->next_local->db, first_table->next_local->table_name, 
+	  	first_table->db, first_table->table_name);
     }
 
     if (mysql_rename_tables(thd, first_table, 0))
@@ -3710,9 +3727,35 @@ end_with_restore_list:
       if (check_table_access(thd, DROP_ACL, all_tables, FALSE, UINT_MAX, FALSE))
 	goto error;				/* purecov: inspected */
     }
+	
     /* DDL and binlog write order are protected by metadata locks. */
-    res= mysql_rm_table(thd, first_table, lex->drop_if_exists,
+    if (thd->variables.sql_log_flashback)
+     {
+       char new_name_buff[FN_REFLEN + 1];
+       ulonglong micro_time= my_micro_time();
+       snprintf(new_name_buff, sizeof(new_name_buff), "%s_%llu", FLASHBACK_TBL_PREFIX, micro_time);
+
+       snprintf(thd->flashback_stmt, sizeof(thd->flashback_stmt), 
+	   		"%c%s.%s:RENAME TABLE `%s`.`%s` TO `%s`.`%s`", '\1', 
+	   		FLASHBACK_DB, first_table->db, FLASHBACK_DB, new_name_buff, 
+	   		first_table->db, first_table->table_name);
+ 
+       TABLE_LIST second_table;
+       memcpy(&second_table, first_table, sizeof(second_table));
+       second_table.db= FLASHBACK_DB;
+       second_table.table_name= new_name_buff;
+       first_table->next_local= &second_table;
+       res= mysql_rename_tables(thd, first_table, 0);
+ 
+       first_table->next_local= NULL;
+     }
+     else
+     {
+       res= mysql_rm_table(thd, first_table, lex->drop_if_exists,
+
 			lex->drop_temporary);
+     }
+
   }
   break;
   case SQLCOM_SHOW_PROCESSLIST:
@@ -5444,6 +5487,9 @@ check_access(THD *thd, ulong want_access, const char *db, ulong *save_priv,
              GRANT_INTERNAL_INFO *grant_internal_info,
              bool dont_check_global_grants, bool no_errors)
 {
+ if (thd->flashback_thd)
+ 	return FALSE;
+
   Security_context *sctx= thd->security_ctx;
   ulong db_access;
 

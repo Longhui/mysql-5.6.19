@@ -671,6 +671,7 @@ const char* Log_event::get_type_str(Log_event_type type)
   case START_EVENT_V3:  return "Start_v3";
   case STOP_EVENT:   return "Stop";
   case QUERY_EVENT:  return "Query";
+  case FLASHBACK_EVENT: return "Query";
   case ROTATE_EVENT: return "Rotate";
   case INTVAR_EVENT: return "Intvar";
   case LOAD_EVENT:   return "Load";
@@ -1617,6 +1618,13 @@ Log_event* Log_event::read_log_event(const char* buf, uint event_len,
     case INCIDENT_EVENT:
       ev = new Incident_log_event(buf, event_len, description_event);
       break;
+
+//#ifdef MYSQL_CLIENT 
+	case FLASHBACK_EVENT: //Flashback
+	  ev = new Query_log_event(buf, event_len, description_event, QUERY_EVENT);
+	  break;
+//#endif
+	  
     case ROWS_QUERY_LOG_EVENT:
       ev= new Rows_query_log_event(buf, event_len, description_event);
       break;
@@ -2245,6 +2253,195 @@ log_event_print_value(IO_CACHE *file, const uchar *ptr,
   return 0;
 }
 
+static size_t
+log_event_print_value(const uchar *ptr,
+                      uint type, uint meta,
+                      char *typestr, size_t typestr_length)
+{
+  uint32 length= 0;
+
+  if (type == MYSQL_TYPE_STRING)
+  {
+    if (meta >= 256)
+    {
+      uint byte0= meta >> 8;
+      uint byte1= meta & 0xFF;
+      
+      if ((byte0 & 0x30) != 0x30)
+      {
+        /* a long CHAR() field: see #37426 */
+        length= byte1 | (((byte0 & 0x30) ^ 0x30) << 4);
+        type= byte0 | 0x30;
+      }
+      else
+        length = meta & 0xFF;
+    }
+    else
+      length= meta;
+  }
+
+  switch (type) {
+  case MYSQL_TYPE_LONG:
+    {
+      return 4;
+    }
+
+  case MYSQL_TYPE_TINY:
+    {
+      return 1;
+    }
+
+  case MYSQL_TYPE_SHORT:
+    {
+      return 2;
+    }
+  
+  case MYSQL_TYPE_INT24:
+    {
+      return 3;
+    }
+
+  case MYSQL_TYPE_LONGLONG:
+    {
+      return 8;
+    }
+
+  case MYSQL_TYPE_NEWDECIMAL:
+    {
+      uint precision= meta >> 8;
+      uint decimals= meta & 0xFF;
+      uint bin_size= my_decimal_get_binary_size(precision, decimals);
+      return bin_size;
+    }
+
+  case MYSQL_TYPE_FLOAT:
+    {
+      return 4;
+    }
+
+  case MYSQL_TYPE_DOUBLE:
+    {
+      return 8;
+    }
+  
+  case MYSQL_TYPE_BIT:
+    {
+      /* Meta-data: bit_len, bytes_in_rec, 2 bytes */
+      uint nbits= ((meta >> 8) * 8) + (meta & 0xFF);
+      length= (nbits + 7) / 8;
+      return length;
+    }
+
+  case MYSQL_TYPE_TIMESTAMP:
+    {
+      return 4;
+    }
+
+  case MYSQL_TYPE_TIMESTAMP2:
+    {
+      return my_timestamp_binary_length(meta);
+    }
+
+  case MYSQL_TYPE_DATETIME:
+    {
+      return 8;
+    }
+
+  case MYSQL_TYPE_DATETIME2:
+    {
+      return my_datetime_binary_length(meta);
+    }
+
+  case MYSQL_TYPE_TIME:
+    {
+      return 3;
+    }
+
+  case MYSQL_TYPE_TIME2:
+    {
+      return my_time_binary_length(meta);
+    }
+    
+  case MYSQL_TYPE_NEWDATE:
+    {
+      return 3;
+    }
+    
+  case MYSQL_TYPE_DATE:
+    {
+      return 3;
+    }
+  
+  case MYSQL_TYPE_YEAR:
+    {
+      return 1;
+    }
+  
+  case MYSQL_TYPE_ENUM:
+    switch (meta & 0xFF) {
+    case 1:
+      return 1;
+    case 2:
+      {
+        return 2;
+      }
+    default:
+      return 0;
+    }
+    break;
+    
+  case MYSQL_TYPE_SET:
+    return meta & 0xFF;
+  
+  case MYSQL_TYPE_BLOB:
+    switch (meta) {
+    case 1:
+      length= *ptr;
+      return length + 1;
+    case 2:
+      length= uint2korr(ptr);
+      return length + 2;
+    case 3:
+      length= uint3korr(ptr);
+      return length + 3;
+    case 4:
+      length= uint4korr(ptr);
+      return length + 4;
+    default:
+      return 0;
+    }
+
+  case MYSQL_TYPE_VARCHAR:
+  case MYSQL_TYPE_VAR_STRING:
+    length= meta;
+    if (length < 256)
+    {
+      length= *ptr;
+      return length + 1;
+    }
+    else
+    {
+      length= uint2korr(ptr);
+      return length + 2;
+    }
+
+  case MYSQL_TYPE_STRING:
+    if (length < 256)
+    {
+      length= *ptr;
+      return length + 1;
+    }
+    else
+    {
+      length= uint2korr(ptr);
+      return length + 2;
+    }
+
+    break;
+  }
+  *typestr= 0;
+  return 0;
+}
 
 /**
   Print a packed row into IO cache
@@ -2252,6 +2449,7 @@ log_event_print_value(IO_CACHE *file, const uchar *ptr,
   @param[in] file              IO cache
   @param[in] td                Table definition
   @param[in] print_event_into  Print parameters
+  @param[in] map               Table_map event.
   @param[in] cols_bitmap       Column bitmaps.
   @param[in] value             Pointer to packed row
   @param[in] prefix            Row's SQL clause ("SET", "WHERE", etc)
@@ -2259,12 +2457,12 @@ log_event_print_value(IO_CACHE *file, const uchar *ptr,
   @retval   - number of bytes scanned.
 */
 
-
 size_t
 Rows_log_event::print_verbose_one_row(IO_CACHE *file, table_def *td,
                                       PRINT_EVENT_INFO *print_event_info,
                                       MY_BITMAP *cols_bitmap,
-                                      const uchar *value, const uchar *prefix)
+                                      const uchar *value, const uchar *prefix,
+                                      const my_bool only_parse) // Flashback                                      
 {
   const uchar *value0= value;
   const uchar *null_bits= value;
@@ -2276,8 +2474,9 @@ Rows_log_event::print_verbose_one_row(IO_CACHE *file, table_def *td,
     columns. Master writes one bit for each affected column.
    */
   value+= (bitmap_bits_set(cols_bitmap) + 7) / 8;
-  
-  my_b_printf(file, "%s", prefix);
+
+  if (!only_parse) // Flashback
+  	my_b_printf(file, "%s", prefix);
   
   for (size_t i= 0; i < td->size(); i ++)
   {
@@ -2289,23 +2488,37 @@ Rows_log_event::print_verbose_one_row(IO_CACHE *file, table_def *td,
     
     if (is_null)
     {
-      my_b_printf(file, "###   @%d=NULL", static_cast<int>(i + 1));
+      if (!only_parse)
+        my_b_printf(file, "###   @%d=NULL", static_cast<int>(i + 1));
     }
     else
     {
-      my_b_printf(file, "###   @%d=", static_cast<int>(i + 1));
-      size_t fsize= td->calc_field_size((uint)i, (uchar*) value);
-      if (value + fsize > m_rows_end)
-      {
-        my_b_printf(file, "***Corrupted replication event was detected."
+      if (!only_parse)
+	  {
+        my_b_printf(file, "###   @%d=", static_cast<int>(i + 1));
+	  }	  
+        size_t fsize= td->calc_field_size((uint)i, (uchar*) value);
+        if (value + fsize > m_rows_end)
+        {
+          sql_print_error("***Corrupted replication event was detected."
                     " Not printing the value***\n");
-        value+= fsize;
-        return 0;
-      }
-      size_t size= log_event_print_value(file, value,
-                                         td->type(i), td->field_metadata(i),
-                                         typestr, sizeof(typestr));
-      if (!size)
+          value+= fsize;
+          return 0;
+        }
+
+	  
+	  size_t size = 0;
+	  if (!only_parse) // Flashback 
+	    size = log_event_print_value(file, value, 
+	    		td->type(i), td->field_metadata(i),					  
+				typestr, sizeof(typestr));
+	   else
+		size = log_event_print_value(value,
+				 td->type(i), td->field_metadata(i),
+				 typestr, sizeof(typestr));
+	  /* End */
+
+	  if (!size)
         return 0;
 
       value+= size;
@@ -2313,26 +2526,74 @@ Rows_log_event::print_verbose_one_row(IO_CACHE *file, table_def *td,
 
     if (print_event_info->verbose > 1)
     {
-      my_b_printf(file, " /* ");
+      if (!only_parse)  // Flashback
+        my_b_printf(file, " /* ");
 
-      if (typestr[0])
-        my_b_printf(file, "%s ", typestr);
-      else
-        my_b_printf(file, "type=%d ", td->type(i));
+	  if (!only_parse) {  // Flashback
+        if (typestr[0])
+          my_b_printf(file, "%s ", typestr);
+        else
+          my_b_printf(file, "type=%d ", td->type(i));
       
-      my_b_printf(file, "meta=%d nullable=%d is_null=%d ",
+        my_b_printf(file, "meta=%d nullable=%d is_null=%d ",
                   td->field_metadata(i),
                   td->maybe_null(i), is_null);
-      my_b_printf(file, "*/");
+        my_b_printf(file, "*/");
+	  }
     }
-    
-    my_b_printf(file, "\n");
+
+	if (!only_parse)  // Flashback
+      my_b_printf(file, "\n");
     
     null_bit_index++;
   }
   return value - value0;
 }
 
+void Rows_log_event::exchange_update_rows(PRINT_EVENT_INFO *print_event_info,
+                                          uchar *rows_buff)
+{
+  Table_map_log_event *map;
+  table_def *td;
+  uchar *data_buff= rows_buff + m_rows_before_size;
+
+  if (!(map= print_event_info->m_table_map.get_table(m_table_id)) ||
+      !(td= map->create_table_def()))
+  {
+    return;
+  }
+
+  for (uchar *value= m_rows_buf; value < m_rows_end; )
+  {
+    uchar *start_pos= value;
+    size_t length1;
+    if (!(length1= print_verbose_one_row(NULL, td, print_event_info,
+                                        &m_cols, value,
+                                         (const uchar*) "", TRUE)))
+      return;
+    value+= length1;
+
+    size_t length2;
+    if (!(length2= print_verbose_one_row(NULL, td, print_event_info,
+                                        &m_cols_ai, value,
+                                        (const uchar*) "", TRUE)))
+      return;
+    value+= length2;
+
+    /* Swap SET and WHERE part */
+    uchar *swap_buff1= (uchar *) my_malloc(length1, MYF(0));
+    uchar *swap_buff2= (uchar *) my_malloc(length2, MYF(0));
+
+    memcpy(swap_buff1, start_pos, length1); // SET part
+    memcpy(swap_buff2, start_pos + length1, length2); // WHERE part
+
+    memcpy(start_pos, swap_buff2, length2);
+    memcpy(start_pos + length2, swap_buff1, length1);
+  }
+
+  /* Move to rows_buff */
+  memcpy(data_buff, m_rows_buf, m_rows_end - m_rows_buf);
+}
 
 /**
   Print a row event into IO cache in human readable form (in SQL format)
@@ -2467,7 +2728,7 @@ void Log_event::print_base64(IO_CACHE* file,
                              PRINT_EVENT_INFO* print_event_info,
                              bool more)
 {
-  const uchar *ptr= (const uchar *)temp_buf;
+  uchar *ptr= (uchar *)temp_buf; //Flashback
   uint32 size= uint4korr(ptr + EVENT_LEN_OFFSET);
   DBUG_ENTER("Log_event::print_base64");
 
@@ -2479,7 +2740,25 @@ void Log_event::print_base64(IO_CACHE* file,
     DBUG_VOID_RETURN;
   }
 
-  if (base64_encode(ptr, (size_t) size, tmp_str))
+  if (is_flashback) //Flashback
+  {
+    switch (ptr[4]) {
+      case WRITE_ROWS_EVENT:
+        ptr[4]= DELETE_ROWS_EVENT;
+        break;
+      case DELETE_ROWS_EVENT:
+        ptr[4]= WRITE_ROWS_EVENT;
+        break;
+      case UPDATE_ROWS_EVENT:
+        Rows_log_event *ev= NULL;
+        ev= new Update_rows_log_event((const char*) ptr, size,
+                                       glob_description_event);
+        ev->exchange_update_rows(print_event_info, ptr);
+        break;
+    }
+  }
+
+  if (base64_encode(ptr, (size_t)size, tmp_str))
   {
     DBUG_ASSERT(0);
   }
@@ -3509,7 +3788,7 @@ bool Query_log_event::write(IO_CACHE* file)
   to the log.  
 */
 Query_log_event::Query_log_event()
-  :Log_event(), data_buf(0)
+  :Log_event(), data_buf(0), flashback_event(0)
 {
   memset(&user, 0, sizeof(user));
   memset(&host, 0, sizeof(host));
@@ -3555,7 +3834,7 @@ Query_log_event::Query_log_event(THD* thd_arg, const char* query_arg,
    lc_time_names_number(thd_arg->variables.lc_time_names->number),
    charset_database_number(0),
    table_map_for_update((ulonglong)thd_arg->table_map_for_update),
-   master_data_written(0), mts_accessed_dbs(0)
+   master_data_written(0), mts_accessed_dbs(0), flashback_event(0)
 {
 
   memset(&user, 0, sizeof(user));
@@ -3889,7 +4168,7 @@ Query_log_event::Query_log_event(const char* buf, uint event_len,
    auto_increment_increment(1), auto_increment_offset(1),
    time_zone_len(0), lc_time_names_number(0), charset_database_number(0),
    table_map_for_update(0), master_data_written(0),
-   mts_accessed_dbs(OVER_MAX_DBS_IN_EVENT_MTS)
+   mts_accessed_dbs(OVER_MAX_DBS_IN_EVENT_MTS), flashback_event(0)
 {
   ulong data_len;
   uint32 tmp;
@@ -4400,9 +4679,28 @@ void Query_log_event::print(FILE* file, PRINT_EVENT_INFO* print_event_info)
    */
   DBUG_EXECUTE_IF ("simulate_file_write_error",
                    {head->write_pos= head->write_end- 500;});
-  print_query_header(head, print_event_info);
-  my_b_write(head, (uchar*) query, q_len);
-  my_b_printf(head, "\n%s\n", print_event_info->delimiter);
+
+  //Flashback
+  uint ev_type= temp_buf[EVENT_TYPE_OFFSET];
+
+  if (!is_flashback && ev_type == QUERY_EVENT) 
+  {
+    print_query_header(head, print_event_info);
+    my_b_write(head, (uchar*) query, q_len);
+    my_b_printf(head, "\n%s\n", print_event_info->delimiter);
+  }
+  else if(is_flashback && ev_type == FLASHBACK_EVENT)
+  {
+    print_query_header(head, print_event_info);
+    char *pos= (char *) (strchr(query, ':') + 1);
+    int left_len= q_len - (pos - query);
+
+    output_buf.append(pos, left_len);
+    output_buf.append('\n');
+    output_buf.append(print_event_info->delimiter);
+    output_buf.append('\n');
+  }
+
 }
 #endif /* MYSQL_CLIENT */
 
@@ -5334,6 +5632,7 @@ Format_description_log_event(uint8 binlog_ver, const char* server_ver)
       /* Note: all event types must explicitly fill in their lengths here. */
       post_header_len[START_EVENT_V3-1]= START_V3_HEADER_LEN;
       post_header_len[QUERY_EVENT-1]= QUERY_HEADER_LEN;
+      post_header_len[FLASHBACK_EVENT-1]= QUERY_HEADER_LEN;
       post_header_len[STOP_EVENT-1]= STOP_HEADER_LEN;
       post_header_len[ROTATE_EVENT-1]= ROTATE_HEADER_LEN;
       post_header_len[INTVAR_EVENT-1]= INTVAR_HEADER_LEN;
@@ -9407,6 +9706,7 @@ Rows_log_event::Rows_log_event(const char *buf, uint event_len,
     m_rows_end= m_rows_buf + data_size;
     m_rows_cur= m_rows_end;
     memcpy(m_rows_buf, ptr_rows_data, data_size);
+	m_rows_before_size = ptr_rows_data - (const uchar *) buf; // Flashback
   }
   else
     m_cols.bitmap= 0; // to not free it
@@ -11601,6 +11901,20 @@ void Rows_log_event::print_helper(FILE *file,
                 last_stmt_event ? " flags: STMT_END_F" : "");
     print_base64(body, print_event_info, !last_stmt_event);
   }
+
+  if (get_flags(STMT_END_F)) //Flashback
+  {
+    size_t bytes_in_cache= 0;
+    char *buff= 0;
+
+    buff= copy_event_cache_to_string_and_reinit(head, &bytes_in_cache);
+    output_buf.append(buff, bytes_in_cache);
+
+    buff= copy_event_cache_to_string_and_reinit(body, &bytes_in_cache);
+    output_buf.append(buff, bytes_in_cache);
+}
+
+  
 }
 #endif
 

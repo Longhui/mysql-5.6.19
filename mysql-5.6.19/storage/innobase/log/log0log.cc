@@ -3301,7 +3301,8 @@ loop:
 		goto loop;
 	}
 
-	/* At this point only page_cleaner should be active. We wait
+	/* At this point only page_cleaner and fc flush thread
+	(if l2 cache enabled) should be active. We wait
 	here to let it complete the flushing of the buffer pools
 	before proceeding further. */
 	srv_shutdown_state = SRV_SHUTDOWN_FLUSH_PHASE;
@@ -3490,6 +3491,10 @@ loop:
 		fil_flush_file_spaces(FIL_TABLESPACE);
 
 		if (fc_is_enabled()) {
+			while (!srv_fc_flush_thread_exited) {
+				fprintf(stderr,"wait flush thread to exit!\n");
+				os_thread_sleep(100000);
+			}
 			fil_flush_file_spaces(FIL_FLASH_CACHE);
 		}
 	}
