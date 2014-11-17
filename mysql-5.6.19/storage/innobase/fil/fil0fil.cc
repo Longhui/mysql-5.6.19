@@ -780,7 +780,8 @@ fil_node_open_file(
 		}
 #endif /* UNIV_HOTBACKUP */
 		ut_a(space->purpose != FIL_LOG);
-		ut_a(fil_is_user_tablespace_id(space->id));
+		//When L2 Cache do recv this assert may not right, skip it
+//		ut_a(fil_is_user_tablespace_id(space->id));
 
 		if (size_bytes < FIL_IBD_FILE_INITIAL_SIZE * UNIV_PAGE_SIZE) {
 			fprintf(stderr,
@@ -5574,14 +5575,17 @@ fil_io(
 # endif /* UNIV_LOG_DEBUG */
 	if (sync) {
 		mode = OS_AIO_SYNC;
+		//if (using_ibuf_aio)
+		//	fprintf(stderr, "fil io this io is sync \n", space_id);
 	} else if (is_log) {
 		mode = OS_AIO_LOG;
+	} else if (using_ibuf_aio) {
+		ut_ad(type == OS_FILE_READ);
+		mode = OS_AIO_IBUF;
 	} else if (type == OS_FILE_READ
 		   && !recv_no_ibuf_operations
 		   && ibuf_page(space_id, zip_size, block_offset, NULL)) {
-		mode = OS_AIO_IBUF;
-	} else if (using_ibuf_aio) {
-		ut_ad(type == OS_FILE_READ);
+		   //fprintf(stderr, "fil_io (%lu, %lu) is ibuf page sync %lu\n", space_id, block_offset, sync);
 		mode = OS_AIO_IBUF;
 	} else if (is_fc_aio) {
 		mode = OS_AIO_FLASH_CACHE_WRITE;

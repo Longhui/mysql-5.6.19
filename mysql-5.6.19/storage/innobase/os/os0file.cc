@@ -3921,7 +3921,7 @@ os_aio_init(
 
 			++n_segments;
 
-			srv_io_thread_function[1] = "flash cache read thread";
+			srv_io_thread_function[n_segments - 1] = "flash cache read thread";
 
 			os_aio_fc_write_array = os_aio_array_create(n_per_seg, 1);
 
@@ -3931,7 +3931,7 @@ os_aio_init(
 
 			++n_segments;
 
-			srv_io_thread_function[1] = "flash cache write thread";
+			srv_io_thread_function[n_segments - 1] = "flash cache write thread";
 		}
 
 		ut_ad(n_segments >= 4);
@@ -5731,7 +5731,7 @@ os_aio_print(
 		}
 
 		if (os_aio_fc_read_array != 0) {
-			fputs(", fc write aio i/o's:", file);
+			fputs(", fc read aio i/o's:", file);
 			os_aio_print_array(file, os_aio_fc_read_array);
 		}
 	}

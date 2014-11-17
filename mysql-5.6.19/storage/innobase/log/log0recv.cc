@@ -2990,6 +2990,8 @@ recv_init_crash_recovery(void)
 		/* if L2 Cache is enabled, when recv, disk doublewrite buffer is handled by fc_recv */
 		if (!fc_is_enabled()) {
 			buf_dblwr_process();
+		} else {
+			fc_start(TRUE);
 		}
 
 		/* Spawn the background thread to flush dirty pages
@@ -3277,6 +3279,12 @@ recv_recovery_from_checkpoint_start_func(
 				}
 			}
 		}
+		
+		if (!recv_needed_recovery && fc_is_enabled()) {
+			fc_start(FALSE);
+		}
+
+
 	}
 
 	/* We currently have only one log group */

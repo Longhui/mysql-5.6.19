@@ -120,7 +120,7 @@ fc_log_create(void)
 	fc_log->buf_unaligned = (byte*)ut_malloc(FLASH_CACHE_BUFFER_SIZE * 2);
 	fc_log->buf = (byte*)ut_align(fc_log->buf_unaligned,FLASH_CACHE_BUFFER_SIZE);
 
-	mutex_create(PFS_NOT_INSTRUMENTED, &fc_log->log_mutex, SYNC_DOUBLEWRITE);
+	mutex_create(PFS_NOT_INSTRUMENTED, &fc_log->log_mutex, SYNC_FC_LOG_MUTEX);
 
 	log_dir = srv_flash_cache_log_dir ? srv_flash_cache_log_dir : srv_data_home;
 	path_len = strlen(log_dir) + strlen(srv_flash_cache_log_file_name) + 2;
@@ -279,8 +279,12 @@ fc_log_create(void)
 		ut_error;
 	} 
 
-	fil_node_create(srv_flash_cache_file, srv_flash_cache_size, FLASH_CACHE_SPACE, 
-			srv_flash_cache_is_raw);
+	if (!fil_node_create(srv_flash_cache_file, srv_flash_cache_size, FLASH_CACHE_SPACE, 
+			srv_flash_cache_is_raw)) {
+		ut_print_timestamp(stderr);
+		fprintf(stderr," InnoDB [Error]: fail to create L2 Cache file node.\n");
+		ut_error;		
+	}
 
 }
 

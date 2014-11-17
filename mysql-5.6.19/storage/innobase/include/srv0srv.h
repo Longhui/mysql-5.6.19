@@ -552,10 +552,10 @@ typedef enum srv_stats_method_name_enum		srv_stats_method_name_t;
 /** Types of threads existing in the system. */
 enum srv_thread_type {
 	SRV_NONE,			/*!< None */
+	SRV_FLASH_CACHE,	/**< thread to control the flush of flash cache pages*/	
 	SRV_WORKER,			/*!< threads serving parallelized
 					queries and queries released from
 					lock wait */
-	SRV_FLASH_CACHE,	/**< thread to control the flush of flash cache pages*/
 	SRV_PURGE,			/*!< Purge coordinator thread */
 	SRV_MASTER			/*!< the master thread, (whose type
 					number must be biggest) */

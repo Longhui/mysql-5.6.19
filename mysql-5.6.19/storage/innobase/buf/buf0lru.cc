@@ -2322,7 +2322,7 @@ buf_LRU_block_remove_hashed(
 
 	case BUF_BLOCK_FILE_PAGE:
 		buf_page_set_state(bpage, BUF_BLOCK_REMOVE_HASH);
-		if (fc_move && fc_is_enabled() && buf_dblwr
+		if (fc_move && fc_is_enabled() && fc
  			&& srv_flash_cache_enable_write && !bpage->zip.data){
             /* only allow uncompressed page to flash cache */
             buf_pool_mutex_exit(buf_pool);
@@ -2371,7 +2371,7 @@ buf_LRU_block_remove_hashed(
 			void*	data = bpage->zip.data;
 
 			 if (fc_move && fc_is_enabled() 
- 				&& buf_dblwr && srv_flash_cache_enable_write) {
+ 				&& fc && srv_flash_cache_enable_write) {
            		/* 
 				 * move zip page  to flash cache when buf pool 
 				 * also free the compressed page

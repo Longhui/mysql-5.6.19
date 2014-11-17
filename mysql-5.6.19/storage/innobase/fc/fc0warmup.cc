@@ -284,7 +284,7 @@ fc_warmup_tablespaces(void)
 	int		ret;
 	char*	dbpath	= NULL;
 	ulint	dbpath_len	= 100;
-	ulint	err	= DB_SUCCESS;
+	dberr_t	err	= DB_SUCCESS;
 	os_file_dir_t	dir;
 	os_file_dir_t	dbdir;
 	os_file_stat_t	dbinfo;

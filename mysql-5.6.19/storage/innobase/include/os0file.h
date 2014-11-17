@@ -189,7 +189,7 @@ enum os_file_create_t {
 				requests in a batch, and only after that
 				wake the i/o-handler thread; this has
 				effect only in simulated aio */
-#define OS_FORCE_IBUF_AIO	1024	/*<! force ibuf use AIO with flash cache */
+#define OS_FORCE_IBUF_AIO	2048	/*<! force ibuf use AIO with flash cache */
 /* @} */
 
 #define OS_WIN31	1	/*!< Microsoft Windows 3.x */

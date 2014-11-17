@@ -1248,7 +1248,7 @@ static inline int compress(struct snappy_env *env, struct source *reader,
 				skip(reader, n);
 			}
 			DCHECK_EQ(bytes_read, num_to_read);
-			fragment = env->scratch;
+			fragment = (const char*)env->scratch;
 			fragment_size = num_to_read;
 		}
 		if (fragment_size < num_to_read)
@@ -1260,14 +1260,14 @@ static inline int compress(struct snappy_env *env, struct source *reader,
 
 		/* Compress input_fragment and append to dest */
 		char *dest;
-		dest = sink_peek(writer, snappy_max_compressed_length(num_to_read));
+		dest = (char*)sink_peek(writer, snappy_max_compressed_length(num_to_read));
 		if (!dest) {
 			/*
 			 * Need a scratch buffer for the output,
 			 * because the byte sink doesn't have enough
 			 * in one piece.
 			 */
-			dest = env->scratch_output;
+			dest = (char*)env->scratch_output;
 		}
 		char *end = compress_fragment(fragment, fragment_size,
 					      dest, table, table_size);
@@ -1360,7 +1360,7 @@ static inline void clear_env(struct snappy_env *env)
 int snappy_init_env(struct snappy_env *env)
 {
     clear_env(env);
-	env->hash_table = vmalloc(sizeof(u16) * kmax_hash_table_size);
+	env->hash_table = (unsigned short*)vmalloc(sizeof(u16) * kmax_hash_table_size);
 	if (!env->hash_table)
 		return -1;
 	return 0;

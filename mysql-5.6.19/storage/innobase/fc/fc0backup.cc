@@ -102,7 +102,7 @@ fc_backup(
 	ulint n_dirty_pages;
 	ulint n_backup_pages;
 	ulint flush_off;
-	ulint offset_high, offset_low;
+	//ulint offset_high, offset_low;
 	ulint block_offset, byte_offset;
 	ulint fc_size = fc_get_size();
 	ulint fc_blk_size = fc_get_block_size();
@@ -292,8 +292,8 @@ fc_backup(
 			ut_free(sorted_blocks);
 			
 			/* then write block metadata to backup file */
-			offset_high = (file_offset >> (32 - KILO_BYTE_SHIFT));
-			offset_low  = ((file_offset << KILO_BYTE_SHIFT) & 0xFFFFFFFFUL);
+			//offset_high = (file_offset >> (32 - KILO_BYTE_SHIFT));
+			//offset_low  = ((file_offset << KILO_BYTE_SHIFT) & 0xFFFFFFFFUL);
 
 			blk_metas_size = ((n_backup_pages * sizeof(fc_bkp_blkmeta_t)) 
 								/ KILO_BYTE + 1) * KILO_BYTE;

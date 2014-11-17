@@ -206,7 +206,7 @@ UNIV_INTERN
 int
 fil_file_readdir_next_file(
 /*=======================*/
-	ulint*		err,	/*!< out: this is set to DB_ERROR if an error
+	dberr_t*		err,	/*!< out: this is set to DB_ERROR if an error
 				was encountered, otherwise not changed */
 	const char*	dirname,/*!< in: directory name or path */
 	os_file_dir_t	dir,	/*!< in: directory stream */

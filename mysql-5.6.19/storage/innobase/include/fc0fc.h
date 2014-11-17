@@ -117,6 +117,7 @@ extern ulong 	srv_flash_cache_version;
 /** flash cache status */
 extern ulint	srv_flash_cache_read;
 extern ulint	srv_flash_cache_write;
+extern ulint	srv_flash_cache_single_write;
 extern ulint	srv_flash_cache_flush;
 extern ulint	srv_flash_cache_dirty;
 extern ulint	srv_flash_cache_merge_write;
@@ -669,7 +670,7 @@ fc_create(void);
 Start flash cache.*/
 UNIV_INTERN
 void
-fc_start(void);
+fc_start(ulint fc_need_recv);
 /*=========*/
 
 /******************************************************************//**

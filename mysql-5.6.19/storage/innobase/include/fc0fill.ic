@@ -20,7 +20,7 @@ fc_LRU_need_move(
 /*=====================*/
 	fc_block_t* b) /*<! in: L2 Cache block if should move */
 {
-	ut_ad(mutex_own(&(fc->mutex)));
+//	ut_ad(mutex_own(&(fc->mutex)));
 	ut_ad(mutex_own(&(b->mutex)));
 
 	return ((((fc->write_off > b->fil_offset) && (fc->write_off - b->fil_offset ) 
@@ -44,7 +44,7 @@ fc_LRU_need_migrate(
 	buf_page_t* bpage) /*<! in: the buf page replaced by buf LRU */	
 {
 	ut_ad(bpage);
-	ut_ad(mutex_own(&fc->mutex));
+//	ut_ad(mutex_own(&fc->mutex));
 
 	return (b == NULL && (bpage->access_time != 0) 
 		&& srv_flash_cache_enable_migrate

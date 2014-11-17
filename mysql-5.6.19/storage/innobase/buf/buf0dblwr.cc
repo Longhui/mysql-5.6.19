@@ -404,7 +404,7 @@ buf_dblwr_init_or_load_pages(
 
 	if (fc_is_enabled()) {
 		//trx_sys_multiple_tablespace_format = TRUE;
-		fc_start();
+		//fc_start();
 		goto leave_func;
 	}
 
@@ -1149,9 +1149,13 @@ retry:
 	mutex_exit(&buf_dblwr->mutex);
 
 	/* if L2 Cache is enabled, we only should write this page to Cache and sync */
-	if (fc_is_enabled()) {
+	if ((WRITE_BACK == srv_flash_cache_write_mode) 
+		&& fc_is_enabled() 
+		&& srv_flash_cache_enable_write) {
+		/* Write doublewrite buffer data to flash cache */
 		fc_write_single_page(bpage, sync);
-	} 
+		return;
+	}
 
 	/* Lets see if we are going to write in the first or second
 	block of the doublewrite buffer. */

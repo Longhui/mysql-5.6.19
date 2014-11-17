@@ -185,7 +185,7 @@ buf_read_page_low(
 
 	if (zip_size) {
 		if (fc_is_enabled()) {
-			*err = fc_read_page(sync,space, zip_size,
+			*err = fc_read_page(sync, space, zip_size,
 				0, offset, wake_later, bpage->zip.data, bpage);
 		} else {
 			*err = fil_io(OS_FILE_READ | wake_later | ignore_nonexistent_pages,
@@ -196,8 +196,8 @@ buf_read_page_low(
 		ut_a(buf_page_get_state(bpage) == BUF_BLOCK_FILE_PAGE);
 
 		if (fc_is_enabled()) {
-			*err = fc_read_page(sync,space,zip_size,
-				0,offset,wake_later,((buf_block_t*) bpage)->frame,bpage);
+			*err = fc_read_page(sync, space, zip_size,
+				0, offset, wake_later, ((buf_block_t*) bpage)->frame, bpage);
 		} else {
 			*err = fil_io(OS_FILE_READ | wake_later | ignore_nonexistent_pages,
 				sync, space, 0, offset, 0, UNIV_PAGE_SIZE,

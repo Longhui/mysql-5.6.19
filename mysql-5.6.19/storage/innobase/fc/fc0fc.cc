@@ -96,6 +96,8 @@ UNIV_INTERN ulint	srv_flash_cache_aio_read = 0;
 UNIV_INTERN ulint	srv_flash_cache_wait_aio = 0;
 /* pages write to doublewrite from flash cache */
 UNIV_INTERN ulint	srv_flash_cache_write = 0;
+/* pages write to flash cache from single flush*/
+UNIV_INTERN ulint	srv_flash_cache_single_write = 0;
 /* pages flush to disk from flash cache */
 UNIV_INTERN ulint	srv_flash_cache_flush = 0;
 /* pages merged in flash cache */
@@ -210,8 +212,8 @@ fc_create(void)
 	/* create hash table with twice more flash cache block numbers */
 	fc->hash_table = hash_create(fc->size * 2);
 
-	mutex_create(PFS_NOT_INSTRUMENTED, &fc->mutex, SYNC_DOUBLEWRITE);
-	rw_lock_create(PFS_NOT_INSTRUMENTED, &fc->hash_rwlock, SYNC_DOUBLEWRITE);
+	mutex_create(PFS_NOT_INSTRUMENTED, &fc->mutex, SYNC_FC_MUTEX);
+	rw_lock_create(PFS_NOT_INSTRUMENTED, &fc->hash_rwlock, SYNC_FC_HASH_RW);
 	
 	fc_size = fc_get_size();
 	fc->block_array = (fc_block_array_t*)ut_malloc(sizeof(fc_block_array_t) * fc_size);
@@ -257,8 +259,8 @@ fc_create(void)
 	if (srv_flash_cache_enable_compress == TRUE) {
 		if (srv_flash_cache_compress_algorithm == FC_BLOCK_COMPRESS_SNAPPY) {
 #ifndef _WIN32
-			fc->dw_zip_state = ut_malloc(sizeof(struct snappy_env));
-			snappy_init_env(fc->dw_zip_state);
+			fc->dw_zip_state = (void*)ut_malloc(sizeof(struct snappy_env));
+			snappy_init_env((struct snappy_env*)fc->dw_zip_state);
 #endif
 		} else if (srv_flash_cache_compress_algorithm == FC_BLOCK_COMPRESS_QUICKLZ){
 #ifdef UNIV_FLASH_CACHE_TRACE
@@ -297,7 +299,7 @@ fc_create(void)
 Start flash cache.*/
 UNIV_INTERN
 void
-fc_start(void)
+fc_start(ulint fc_need_recv)
 /*=========*/
 {
 	ut_ad(srv_flash_cache_size > 0);
@@ -317,6 +319,7 @@ fc_start(void)
              * if we run here, it means we need scan L2 Cache file
              * to recovery the flash cache block.
              */
+            ut_a(fc_need_recv);
             fil_load_single_table_tablespaces();
 			fc_recv();
 		}
@@ -719,6 +722,30 @@ fc_sync_fcfile(void)
 }
 
 /********************************************************************//**
+Test if is_doing_doublewrite equal to 1, if so, commit log, else just do --. */
+static
+void
+fc_test_and_commit_log(void)
+/*===========================*/
+{
+	/* if is_doing_doublewrite > 1, just  sub it and do not commit the log */
+	/* if is_doing_doublewrite == 1, first commit the log, and then set is_doing_doublewrite zero, so move/migrate can go on */
+#ifdef UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE
+	flash_cache_mutex_enter();
+
+	ut_a(fc->is_doing_doublewrite == 1);
+	ut_a(srv_fc_flush_should_commit_log_write != 0);
+
+	/* this function will release the fc mutex */
+	fc_log_commit_when_update_writeoff();
+	flash_cache_mutex_enter();
+	fc->is_doing_doublewrite = 0;
+	os_event_set(fc->wait_doublewrite_event);	
+	flash_cache_mutex_exit();
+#endif
+}
+
+/********************************************************************//**
 Flush a doublewrite block to flashcache block.
 @return:NULL*/
 static
@@ -1083,9 +1110,9 @@ fc_write_single_page(
 	buf_page_t*	bpage,	/*!< in: buffer block to write */
 	bool		sync)	/*!< in: true if sync IO requested */
 {
-	dberr_t* err = NULL;
+	dberr_t err;
     ulint zip_size;
-	ulint cp_size;
+	ulint cp_size = 0;
 	ulint data_size;	
 	ulint need_compress;
 	ulint block_offset, byte_offset;
@@ -1130,7 +1157,8 @@ fc_write_single_page(
 		zip_buf_unalign = (byte*)ut_malloc(3 * UNIV_PAGE_SIZE);
 		zip_buf = (byte*)ut_align(zip_buf_unalign, UNIV_PAGE_SIZE);
 		memset(zip_buf, '0', 2 * UNIV_PAGE_SIZE);
-		cp_size = fc_block_do_compress(TRUE, bpage, zip_buf);
+		/* we should set fc_block_do_compress variable is_dw = FALSE, as it is not batch  */
+		cp_size = fc_block_do_compress(FALSE, bpage, zip_buf);
 		//printf("cp_size %lu \n", cp_size);
 		if (fc_block_compress_successed(cp_size) == FALSE) {
 			need_compress = FALSE;
@@ -1157,6 +1185,15 @@ retry:
 		goto retry;
 	}
 
+	if (fc->is_doing_doublewrite > 0) {
+		/*
+		* we wait here to avoid the single flush commit the writeoff/writeround
+		* (which update by batch flush but data have not been synced)
+		*/
+		fc_wait_for_aio_dw_launch();
+		goto retry;
+	}
+
 #ifdef UNIV_FLASH_CACHE_TRACE	 
 	old_write_off = fc->write_off;
 	old_write_round = fc->write_round;
@@ -1164,7 +1201,7 @@ retry:
 
 	/* set  is_doing_doublewrite = 1, so move/migrate should not commit the writeoff until doublewrite fsynced */
 #ifdef UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE
-	fc->is_doing_doublewrite = 1;
+	fc->is_doing_doublewrite++;
 #endif
 
 	/* find fc block(s) and write the buf_block into the block(s) */
@@ -1213,6 +1250,7 @@ retry:
 	wf_block = fc_block_find_replaceable(TRUE, data_size);
 
 	ut_a(wf_block != NULL);
+	ut_a(wf_block->fil_offset == fc_get_block(fc->write_off)->fil_offset);
 
 	/* the block mutex will release when io compelete, so flush thread will not do wrong flush */
 	flash_block_mutex_enter(wf_block->fil_offset);
@@ -1285,22 +1323,25 @@ retry:
 #ifdef UNIV_FLASH_CACHE_TRACE
 		fc_block_compress_check(zip_buf, wf_block);	
 #endif
-		*err = fil_io(OS_FILE_WRITE, FALSE, FLASH_CACHE_SPACE, 0,
+		err = fil_io(OS_FILE_WRITE, TRUE, FLASH_CACHE_SPACE, 0,
 				block_offset, byte_offset, data_size * blk_size * KILO_BYTE,
 				zip_buf, NULL);
 	} else {
-		*err = fil_io(OS_FILE_WRITE, FALSE, FLASH_CACHE_SPACE, 0,
-				block_offset, byte_offset, zip_size,
-				((buf_block_t*) bpage)->frame, NULL);
+		err = fil_io(OS_FILE_WRITE, TRUE, FLASH_CACHE_SPACE, 0,
+				block_offset, byte_offset, data_size * blk_size * KILO_BYTE,
+				((buf_block_t*)bpage)->frame, NULL);
 	}
 
-	if (*err != DB_SUCCESS) {
+	if (err != DB_SUCCESS) {
 		ut_print_timestamp(stderr);
 		fprintf(stderr," InnoDB Error: L2 Cache fail to launch aio. page(%lu, %lu) in %lu.\n", 
 			(ulong)wf_block->space, (ulong)wf_block->offset, (ulong)wf_block->fil_offset);
 	}
 
 	fc_sync_fcfile();
+
+	//fprintf(stderr,"   single write space %lu offset %lu filoff %lu zip size %lu\n", 
+	//	(ulong)wf_block->space, (ulong)wf_block->offset, (ulong)wf_block->fil_offset, zip_size);
 
 	/* at this time, io complete, set the block state READY_FOR_FLUSH and release block mutex */
 	ut_a(bpage->fc_block != NULL);
@@ -1311,19 +1352,11 @@ retry:
 	
 	buf_page_io_complete(bpage, TRUE);
 
-	/* first commit the log, and then set is_doing_doublewrite zero, so move/migrate can go on */
-#ifdef UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE
-	flash_cache_mutex_enter();
-	ut_a(srv_fc_flush_should_commit_log_write != 0);
+	fc_test_and_commit_log();
 
-	/* this function will release the fc mutex */
-	fc_log_commit_when_update_writeoff();
+	srv_flash_cache_single_write++;
 
-	flash_cache_mutex_enter();
-	fc->is_doing_doublewrite = 0;
-	os_event_set(fc->wait_doublewrite_event);	
-	flash_cache_mutex_exit();
-#endif
+	ut_free(zip_buf_unalign);
 
 }
 
@@ -1373,6 +1406,15 @@ retry:
 		goto retry;
 	}
 
+	if (fc->is_doing_doublewrite > 0) {
+		/*
+		* we wait here to avoid the batch flush commit the writeoff/writeround
+		* (which update by single flush but data have not been synced)
+		*/
+		fc_wait_for_aio_dw_launch();
+		goto retry;
+	}
+
 #ifdef UNIV_FLASH_CACHE_TRACE	 
 	old_write_off = fc->write_off;
 	old_write_round = fc->write_round;
@@ -1380,7 +1422,7 @@ retry:
 
 	/* set  is_doing_doublewrite = 1, so move/migrate should not commit the writeoff until doublewrite fsynced */
 #ifdef UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE
-	fc->is_doing_doublewrite = 1;
+	fc->is_doing_doublewrite++;
 #endif
 
 	fc_write_find_block_and_sync_hash(trx_dw);
@@ -1427,19 +1469,7 @@ retry:
 	/* at this time, io complete, set the block state READY_FOR_FLUSH and release block mutex */
 	fc_write_complete_io(trx_dw);
 
-	/* first commit the log, and then set is_doing_doublewrite zero, so move/migrate can go on */
-#ifdef UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE
-	flash_cache_mutex_enter();
-	ut_a(srv_fc_flush_should_commit_log_write != 0);
-	/* this function will release the fc mutex */
-	fc_log_commit_when_update_writeoff();
-
-	flash_cache_mutex_enter();
-	fc->is_doing_doublewrite = 0;
-	os_event_set(fc->wait_doublewrite_event);	
-	flash_cache_mutex_exit();
-#endif
-
+	fc_test_and_commit_log();
 }
 
 /********************************************************************//**
@@ -1581,16 +1611,18 @@ fc_read_page(
 				or from where to write; in aio this must be appropriately aligned */
 	buf_page_t*	bpage)	/*!< in/out: read L2 Cache block to this page */
 {
-	dberr_t* err = NULL;
+	dberr_t err;
 	ulint blk_size;
 	ulint block_offset, byte_offset;
 	ibool using_ibuf_aio = false;
 	fc_block_t *block = NULL;
 	
+	err = DB_SUCCESS;
+
 	if (fc == NULL) {
-		*err = fil_io(OS_FILE_READ | wake_later, sync, space, zip_size, offset, 0, 
+		err = fil_io(OS_FILE_READ | wake_later, sync, space, zip_size, offset, 0, 
 			zip_size ? zip_size : UNIV_PAGE_SIZE, buf, bpage);        
-		return *err;	
+		return err;	
 	}
 
 	ut_ad(!mutex_own(&fc->mutex));
@@ -1664,15 +1696,16 @@ fc_read_page(
 			&& ibuf_page(block->space, zip_size, block->offset, NULL)) {
             /* ibuf page in L2 cache must use ibuf aio thread */
 			using_ibuf_aio = TRUE;
+			//fprintf(stderr, "fc_read_page (%lu, %lu) is ibuf page sync %lu\n", block->space, block->offset, sync);
 		}
 
 		fc_io_offset(block->fil_offset, &block_offset, &byte_offset);
 		if (using_ibuf_aio) {
-			*err = fil_io(OS_FILE_READ | wake_later | OS_FORCE_IBUF_AIO,
+			err = fil_io(OS_FILE_READ | wake_later | OS_FORCE_IBUF_AIO,
 					sync, FLASH_CACHE_SPACE, 0, block_offset, byte_offset,
 					blk_size * KILO_BYTE, read_buf, bpage);
 		} else {
-			*err = fil_io(OS_FILE_READ | wake_later ,
+			err = fil_io(OS_FILE_READ | wake_later ,
 					sync, FLASH_CACHE_SPACE, 0, block_offset, byte_offset,
 					blk_size * KILO_BYTE, read_buf, bpage);
 		}
@@ -1683,11 +1716,11 @@ fc_read_page(
 		
 	} else {
 		rw_lock_s_unlock(&fc->hash_rwlock);
-		*err = fil_io(OS_FILE_READ | wake_later, sync, space, zip_size, offset, 0, 
+		err = fil_io(OS_FILE_READ | wake_later, sync, space, zip_size, offset, 0, 
 				zip_size ? zip_size : UNIV_PAGE_SIZE, buf, bpage);
 	}
 
-	return *err;
+	return err;
 }
 
 /********************************************************************//**
@@ -1927,7 +1960,7 @@ fc_block_do_compress_snappy(
 	
 	zip_size = fil_space_get_zip_size(bpage->space);
 	ut_a(zip_size == 0);
-	if (buf_page_is_corrupted((const byte*)tmp, zip_size)) {
+	if (buf_page_is_corrupted(false, (const byte*)tmp, zip_size)) {
 		ut_error;
 	}
 	
@@ -2066,7 +2099,7 @@ fc_block_do_decompress_snappy(
 	}
 	
 	ret = snappy_uncompress((const char*)buf_compressed + FC_ZIP_PAGE_DATA,
-				compressed_size, buf_decompressed);
+				compressed_size, (char*)buf_decompressed);
 		
 	if (ret != 0) {
 		ut_print_timestamp(stderr);
@@ -2173,9 +2206,15 @@ fc_block_pack_compress(
 	ulint zip_size = fil_space_get_zip_size(block->space);	
 	fc_block_do_decompress(DECOMPRESS_READ_SSD, buf, block->raw_zip_size, tmp);
 
+#ifndef _WIN32
 	if (buf_page_is_corrupted(true, (const unsigned char*)tmp, zip_size)) {
 		ut_error;
 	} 
+#else
+	if (buf_page_is_corrupted(false, (const unsigned char*)tmp, zip_size)) {
+		ut_error;
+	} 
+#endif
 	
 	if (srv_flash_cache_compress_algorithm == FC_BLOCK_COMPRESS_QUICKLZ) {
 		if(fc_block_get_data_size(block) * fc_get_block_size_byte()
@@ -2213,9 +2252,15 @@ fc_block_pack_compress(
 	fc_block_compress_check((unsigned char*)buf, block);
 	fc_block_do_decompress(DECOMPRESS_READ_SSD, buf, block->raw_zip_size, tmp);
 	
+#ifndef _WIN32
 	if (buf_page_is_corrupted(true, (const unsigned char*)tmp, zip_size)) {
 		ut_error;
-	}
+	} 
+#else
+	if (buf_page_is_corrupted(false, (const unsigned char*)tmp, zip_size)) {
+		ut_error;
+	} 
+#endif
 
 	ut_free(tmp_unalign);
 #endif
@@ -2278,7 +2323,7 @@ fc_status(
 	fprintf(file,	"flash cache thread status: %s \n"
 					"flash cache size: %lu (%lu MB), write to %lu(%lu), flush to %lu(%lu), distance %lu (%.2f%%)\n"
 					"flash cache used: %lu(%.2f%%), compress_ratio: %.2f%%, can_cache: %lu MB, io skip: %lu\n"
-					"flash cache reads %lu, aio read %lu, writes %lu, dirty %lu(%.2f%%), flush %lu(%lu).\n"
+					"flash cache reads %lu, aio read %lu, writes %lu, single_write %lu, dirty %lu(%.2f%%), flush %lu(%lu).\n"
 					"flash cache migrate %lu, move %lu, compress %lu, pack %lu(%.2f%%), decompress %lu\n"
 					"FIL_PAGE_INDEX reads: %lu(%.2f%%): writes: %lu, flush: %lu, merge raio %.2f%%\n"
 					"FIL_PAGE_INODE reads: %lu(%.2f%%): writes: %lu, flush: %lu, merge raio %.2f%%\n"
@@ -2305,6 +2350,7 @@ fc_status(
 					(ulong)srv_flash_cache_read,
 					(ulong)srv_flash_cache_aio_read,
 					(ulong)srv_flash_cache_write,
+					(ulong)srv_flash_cache_single_write,					
 					(ulong)srv_flash_cache_dirty,
 					(100.0 * srv_flash_cache_dirty) / fc_size,
 					(ulong)srv_flash_cache_flush,

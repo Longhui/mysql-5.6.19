@@ -64,7 +64,7 @@ fc_LRU_move(
 	fc_block_t *old_block;
 
     page_t*	page;
-	ulint ret ;
+	dberr_t ret;
 	ulint zip_size;
 	ulint blk_size;
 	ulint fc_blk_size;
@@ -164,7 +164,11 @@ fc_LRU_move(
 #ifdef UNIV_FLASH_CACHE_FOR_RECOVERY_SAFE
 retry:
 	flash_cache_mutex_enter();
-	if (fc->is_doing_doublewrite == 1) {
+	if (fc->is_doing_doublewrite > 0) {
+		/*
+		* we wait here to avoid the doublewrite commit the writeoff/writeround
+		* (which update by move/migrate but data have not been synced)
+		*/
 		if (move_flag == 1) {
 			fc_wait_for_aio_dw_launch();
 			goto retry;

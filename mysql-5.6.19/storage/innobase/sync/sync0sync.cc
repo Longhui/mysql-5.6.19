@@ -1171,6 +1171,13 @@ sync_thread_add_level(
 			ut_error;
 		}
 		break;
+
+	case SYNC_FC_MUTEX:
+	case SYNC_FC_LOG_MUTEX:
+	case SYNC_FC_HASH_RW:
+	case SYNC_FC_BLOCK_MUTEX:
+		break;
+
 	case SYNC_TRX:
 		/* Either the thread must own the lock_sys->mutex, or
 		it is allowed to own only ONE trx->mutex. */

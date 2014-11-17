@@ -554,7 +554,7 @@ retry:
 		data_size = fc_block_get_data_size(tmp_block);
 
 		/* if the block is read io fixed, just skip it */
-		if (tmp_block->io_fix & IO_FIX_READ) {		
+		if ((tmp_block->io_fix & IO_FIX_READ) || (tmp_block->io_fix & IO_FIX_FLUSH)) {		
 #ifdef UNIV_FLASH_CACHE_TRACE
 			fprintf(fc->f_debug, "find io %d, fix 0x%x. file:%s:%d\n", 
 				(int)tmp_block->fil_offset, (int)tmp_block->io_fix,
@@ -688,8 +688,8 @@ fc_wait_for_aio_dw_launch(void)
 	ib_int64_t sig_count;
 	
 #ifdef UNIV_FLASH_CACHE_TRACE	
-	ut_print_timestamp(stderr);
-	fprintf(stderr, " InnoDB: L2 Cache waiting untill doublewrite launch async io.\n");
+//	ut_print_timestamp(stderr);
+//	fprintf(stderr, " InnoDB: L2 Cache waiting untill doublewrite launch async io.\n");
 #endif
 
 	sig_count =os_event_reset(fc->wait_doublewrite_event);
@@ -697,8 +697,8 @@ fc_wait_for_aio_dw_launch(void)
 	os_event_wait_low(fc->wait_doublewrite_event, sig_count);
 	
 #ifdef UNIV_FLASH_CACHE_TRACE
-	ut_print_timestamp(stderr);
-	fprintf(stderr, "InnoDB: L2 Cache doublewrite async io launched.\n");
+//	ut_print_timestamp(stderr);
+//	fprintf(stderr, "InnoDB: L2 Cache doublewrite async io launched.\n");
 
 #endif
 
@@ -855,7 +855,7 @@ fc_block_init(
 	tmp_block->state = BLOCK_NOT_USED;
 	tmp_block->io_fix = IO_FIX_NO_IO; 
 	
-	mutex_create(PFS_NOT_INSTRUMENTED, &tmp_block->mutex, SYNC_DOUBLEWRITE);
+	mutex_create(PFS_NOT_INSTRUMENTED, &tmp_block->mutex, SYNC_FC_BLOCK_MUTEX);
 
 	fc->block_array[fil_offset].block = tmp_block;
 
