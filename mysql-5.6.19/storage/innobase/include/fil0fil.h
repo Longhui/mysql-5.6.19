@@ -163,6 +163,7 @@ extern fil_addr_t	fil_addr_null;
 /** Space types @{ */
 #define FIL_TABLESPACE		501	/*!< tablespace */
 #define FIL_LOG			502	/*!< redo log */
+#define FIL_FLASH_CACHE	503 /*!< flash cache file */
 /* @} */
 
 /** The number of fsyncs done to the log */
@@ -172,6 +173,9 @@ extern ulint	fil_n_log_flushes;
 extern ulint	fil_n_pending_log_flushes;
 /** Number of pending tablespace flushes */
 extern ulint	fil_n_pending_tablespace_flushes;
+
+/** Number of pending flash cache flushes */
+extern ulint	fil_n_pending_flash_cache_flushes;
 
 /** Number of files currently open */
 extern ulint	fil_n_file_opened;
@@ -191,6 +195,24 @@ struct fsp_open_info {
 };
 
 #ifndef UNIV_HOTBACKUP
+
+/***********************************************************************//**
+A fault-tolerant function that tries to read the next file name in the
+directory. We retry 100 times if os_file_readdir_next_file() returns -1. The
+idea is to read as much good data as we can and jump over bad data.
+@return 0 if ok, -1 if error even after the retries, 1 if at the end
+of the directory */
+UNIV_INTERN
+int
+fil_file_readdir_next_file(
+/*=======================*/
+	ulint*		err,	/*!< out: this is set to DB_ERROR if an error
+				was encountered, otherwise not changed */
+	const char*	dirname,/*!< in: directory name or path */
+	os_file_dir_t	dir,	/*!< in: directory stream */
+	os_file_stat_t*	info	/*!< in/out: buffer where the info is returned */
+);
+
 /*******************************************************************//**
 Returns the version number of a tablespace, -1 if not found.
 @return version number, -1 if the tablespace does not exist in the
@@ -1014,4 +1036,13 @@ fil_user_tablespace_restore_page(
 					write buffer */
 
 #endif /* !UNIV_INNOCHECKSUM */
+
+/*******************************************************************//**
+Returns the table name by a given id, NULL if not found. */
+UNIV_INTERN
+char*
+fil_space_get_table_name_by_id(
+/*================*/
+    ulint	id);	/*!< in: space id */
+
 #endif /* fil0fil_h */

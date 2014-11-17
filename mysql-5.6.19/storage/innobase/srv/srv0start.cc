@@ -94,6 +94,8 @@ Created 2/16/1996 Heikki Tuuri
 # include "os0sync.h"
 # include "zlib.h"
 # include "ut0crc32.h"
+# include "fc0log.h"
+# include "fc0warmup.h"
 
 /** Log sequence number immediately after startup */
 UNIV_INTERN lsn_t	srv_start_lsn;
@@ -1633,6 +1635,13 @@ innobase_start_or_create_for_mysql(void)
 		" InnoDB: !!!!!!!! UNIV_MEM_DEBUG switched on !!!!!!!!!\n");
 #endif
 
+	if (fc_is_enabled() && srv_flash_cache_backuping) {
+		ut_print_timestamp(stderr);
+		fprintf(stderr, " InnoDB: 'innodb_flash_cache_backuping' can only be set to OFF(0) when start.\n");
+		fprintf(stderr, "InnoDB: Ignore it's settiing in the configure file or comand line, and automatically set it to OFF(0).\n");
+		srv_flash_cache_backuping = FALSE;
+	}
+
 	if (srv_use_sys_malloc) {
 		ib_logf(IB_LOG_LEVEL_INFO,
 			"The InnoDB memory heap is disabled");
@@ -1884,6 +1893,9 @@ innobase_start_or_create_for_mysql(void)
 		/* Add the log and ibuf IO threads. */
 		srv_n_file_io_threads += 2;
 		srv_n_file_io_threads += srv_n_write_io_threads;
+		if (fc_is_enabled()) {
+			srv_n_file_io_threads += 2;
+		}
 	} else {
 		ib_logf(IB_LOG_LEVEL_INFO,
 			"Disabling background IO write threads.");
@@ -2662,6 +2674,10 @@ files_checked:
 
 	ut_a(trx_purge_state() == PURGE_STATE_INIT);
 
+	if (fc_is_enabled() && fc_log->first_use && srv_flash_cache_warmup_table) {
+		fc_warmup_tablespaces();
+	}
+
 	/* Create the master thread which does purge and other utility
 	operations */
 
@@ -2687,6 +2703,12 @@ files_checked:
 			os_thread_create(
 				srv_worker_thread, NULL,
 				thread_ids + 5 + i + SRV_MAX_N_IO_THREADS);
+		}
+
+		/* If the user has enable flash cache and not need recovery,
+		then start the flash cache thread. */
+		if (fc_is_enabled() > 0 && !recv_needed_recovery) {
+			os_thread_create(&srv_fc_flush_thread, NULL, NULL);
 		}
 
 		srv_start_wait_for_purge_to_start();

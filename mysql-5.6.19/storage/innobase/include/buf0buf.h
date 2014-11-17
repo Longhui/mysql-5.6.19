@@ -1198,7 +1198,8 @@ UNIV_INTERN
 bool
 buf_page_io_complete(
 /*=================*/
-	buf_page_t*	bpage);	/*!< in: pointer to the block in question */
+	buf_page_t*	bpage,	/*!< in: pointer to the block in question */
+	bool		sync);	/*!< in: whether is sync io */
 /********************************************************************//**
 Calculates a folded value of a file page address to use in the page hash
 table.
@@ -1609,6 +1610,7 @@ struct buf_page_t{
 					protected by buf_pool->zip_mutex
 					or buf_block_t::mutex. */
 # endif /* UNIV_DEBUG_FILE_ACCESSES || UNIV_DEBUG */
+	void* fc_block;	/*!< flash cache block if in async read mode */
 #endif /* !UNIV_HOTBACKUP */
 };
 

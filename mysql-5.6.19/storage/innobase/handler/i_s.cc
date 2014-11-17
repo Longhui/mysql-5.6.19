@@ -56,6 +56,8 @@ Created July 18, 2007 Vasil Dimov
 #include "fts0priv.h"
 #include "btr0btr.h"
 #include "page0zip.h"
+#include "fc0fc.h"	/* for InnoDB Flash Cache */
+#include "fil0fil.h"	/* for fil_space_get_by_id */
 
 /** structure associates a name string with a file page type and/or buffer
 page state. */
@@ -5408,6 +5410,197 @@ UNIV_INTERN struct st_mysql_plugin	i_s_innodb_buffer_page =
 	/* void* */
 	STRUCT_FLD(__reserved1, NULL),
 
+	/* Plugin flags */
+	/* unsigned long */
+	STRUCT_FLD(flags, 0UL),
+};
+
+/* Fields of the dynamic table information_schema.innodb_cmpmem. */
+static ST_FIELD_INFO	i_s_flash_cache_fields_info[] =
+{
+	{STRUCT_FLD(field_name,		"block_id"),
+        STRUCT_FLD(field_length,	5),
+        STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
+        STRUCT_FLD(value,		0),
+        STRUCT_FLD(field_flags,	0),
+        STRUCT_FLD(old_name,		"Flash Cache Block Id"),
+        STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
+    
+	{STRUCT_FLD(field_name,		"state"),
+        STRUCT_FLD(field_length,	16),
+        STRUCT_FLD(field_type,		MYSQL_TYPE_STRING),
+        STRUCT_FLD(value,		0),
+        STRUCT_FLD(field_flags,	0),
+        STRUCT_FLD(old_name,		"Flash Cache Block Status"),
+        STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
+    
+	{STRUCT_FLD(field_name,		"space"),
+        STRUCT_FLD(field_length,	MY_INT32_NUM_DECIMAL_DIGITS),
+        STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
+        STRUCT_FLD(value,		0),
+        STRUCT_FLD(field_flags,	0),
+        STRUCT_FLD(old_name,		"Cached Space Id"),
+        STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
+    
+	{STRUCT_FLD(field_name,		"page_no"),
+        STRUCT_FLD(field_length,	MY_INT32_NUM_DECIMAL_DIGITS),
+        STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
+        STRUCT_FLD(value,		0),
+        STRUCT_FLD(field_flags,	0),
+        STRUCT_FLD(old_name,		"Cached Page Number"),
+        STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
+    
+    {STRUCT_FLD(field_name,		"table_name"),
+        STRUCT_FLD(field_length,	32),
+        STRUCT_FLD(field_type,		MYSQL_TYPE_STRING),
+        STRUCT_FLD(value,		0),
+        STRUCT_FLD(field_flags,	0),
+        STRUCT_FLD(old_name,		"Flash Cache Table name"),
+        STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
+    
+	END_OF_ST_FIELD_INFO
+};
+
+static
+int
+i_s_flash_cache_fill(
+/*============*/
+	THD*		thd,	/*!< in: thread */
+	TABLE_LIST*	tables,	/*!< in/out: tables to fill */
+	COND*		cond)	/*!< in: condition (ignored) */
+{
+    int i = 0;
+    char* table_name;
+	fc_block_t* block = NULL;
+    TABLE*  table = (TABLE *) tables->table;
+    char*   state[] = {
+        "Not Used",
+        "Ready For Flush",
+        "Read Cache",
+        "Flushed"
+    };
+ 
+    DBUG_ENTER("i_s_flash_cache_fill");
+    
+    if (srv_flash_cache_size == 0){
+        DBUG_RETURN(0);
+    }
+    
+    /* deny access to non-superusers */
+    if (check_global_access(thd, PROCESS_ACL)) {
+        DBUG_RETURN(0);
+    }
+    
+    RETURN_IF_INNODB_NOT_STARTED(tables->schema_table_name);
+
+	i = 0;
+    while (i < fc->size) {
+		rw_lock_s_lock(&fc->hash_rwlock);
+		block = fc_get_block(i);
+
+		if (block == NULL) {
+			i++;
+			continue;
+		}
+
+		flash_block_mutex_enter(block->fil_offset);
+		rw_lock_s_unlock(&fc->hash_rwlock);
+		
+        OK(field_store_ulint(table->field[0], i));
+        OK(field_store_string(table->field[1], state[block->state]));
+        OK(field_store_ulint(table->field[2], block->space));
+        OK(field_store_ulint(table->field[3], block->offset));
+        
+        table_name = fil_space_get_table_name_by_id(block->space);
+        
+        if (block->state == BLOCK_NOT_USED){
+            OK(field_store_string(table->field[4],"Not Used"));
+        }
+        else if (table_name){
+            OK(field_store_string(table->field[4],table_name));
+        }
+        else{
+            OK(field_store_string(table->field[4],"Unknow"));
+        }
+        
+        if (schema_table_store_record(thd, table)) {
+			flash_block_mutex_exit(block->fil_offset);
+            DBUG_RETURN(1);
+        }
+
+		i += fc_block_get_data_size(block);
+		flash_block_mutex_exit(block->fil_offset);
+    }
+    
+    DBUG_RETURN(0);
+}
+
+/*******************************************************************//**
+Bind the dynamic table information_schema.innodb_flash_cache.
+@return	0 on success */
+static
+int
+i_s_flash_cache_init(
+/*===============*/
+                   void*	p)	/*!< in/out: table schema object */
+{
+	DBUG_ENTER("i_s_flash_cache_init");
+	ST_SCHEMA_TABLE* schema = (ST_SCHEMA_TABLE*) p;
+    
+	schema->fields_info = i_s_flash_cache_fields_info;
+	schema->fill_table = i_s_flash_cache_fill;
+    
+	DBUG_RETURN(0);
+}
+
+UNIV_INTERN struct st_mysql_plugin	i_s_innodb_flash_cache =
+{
+	/* the plugin type (a MYSQL_XXX_PLUGIN value) */
+	/* int */
+	STRUCT_FLD(type, MYSQL_INFORMATION_SCHEMA_PLUGIN),
+    
+	/* pointer to type-specific plugin descriptor */
+	/* void* */
+	STRUCT_FLD(info, &i_s_info),
+    
+	/* plugin name */
+	/* const char* */
+	STRUCT_FLD(name, "INNODB_FLASH_CACHE"),
+    
+	/* plugin author (for SHOW PLUGINS) */
+	/* const char* */
+	STRUCT_FLD(author, plugin_author),
+    
+	/* general descriptive text (for SHOW PLUGINS) */
+	/* const char* */
+	STRUCT_FLD(descr, "Statistics for the InnoDB Flash Cache Block"),
+    
+	/* the plugin license (PLUGIN_LICENSE_XXX) */
+	/* int */
+	STRUCT_FLD(license, PLUGIN_LICENSE_GPL),
+
+	/* the function to invoke when plugin is loaded */
+	/* int (*)(void*); */
+	STRUCT_FLD(init, i_s_flash_cache_init),
+    
+	/* the function to invoke when plugin is unloaded */
+	/* int (*)(void*); */
+	STRUCT_FLD(deinit, i_s_common_deinit),
+    
+	/* plugin version (for SHOW PLUGINS) */
+	/* unsigned int */
+	STRUCT_FLD(version, INNODB_VERSION_SHORT),
+    
+	/* struct st_mysql_show_var* */
+	STRUCT_FLD(status_vars, NULL),
+    
+	/* struct st_mysql_sys_var** */
+	STRUCT_FLD(system_vars, NULL),
+    
+	/* reserved for dependency checking */
+	/* void* */
+	STRUCT_FLD(__reserved1, NULL),
+    
 	/* Plugin flags */
 	/* unsigned long */
 	STRUCT_FLD(flags, 0UL),

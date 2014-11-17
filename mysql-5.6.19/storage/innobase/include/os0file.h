@@ -181,6 +181,7 @@ enum os_file_create_t {
 				i/o is not as good, because it must serialize
 				the file seek and read or write, causing a
 				bottleneck for parallelism. */
+#define OS_AIO_FLASH_CACHE_WRITE 25 /*!<  Asynchronous i/o for flash cache */
 
 #define OS_AIO_SIMULATED_WAKE_LATER	512 /*!< This can be ORed to mode
 				in the call of os_aio(...),
@@ -188,6 +189,7 @@ enum os_file_create_t {
 				requests in a batch, and only after that
 				wake the i/o-handler thread; this has
 				effect only in simulated aio */
+#define OS_FORCE_IBUF_AIO	1024	/*<! force ibuf use AIO with flash cache */
 /* @} */
 
 #define OS_WIN31	1	/*!< Microsoft Windows 3.x */
@@ -1130,6 +1132,20 @@ be other, synchronous, pending writes. */
 UNIV_INTERN
 void
 os_aio_wait_until_no_pending_writes(void);
+/*=====================================*/
+/************************************************************************//**
+Waits until there are no pending reads in os_aio_read_array. There can
+be other, synchronous, pending writes. */
+UNIV_INTERN
+void
+os_aio_wait_until_no_pending_reads(void);
+/*=====================================*/
+/************************************************************************//**
+Waits until there are no pending writes in os_aio_fc_write_array. There can
+be other, synchronous, pending writes. */
+UNIV_INTERN
+void
+os_aio_wait_until_no_pending_fc_writes(void);
 /*=====================================*/
 /**********************************************************************//**
 Wakes up simulated aio i/o-handler threads if they have something to do. */

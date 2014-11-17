@@ -35,6 +35,8 @@ Created 2011/12/19
 #include "srv0srv.h"
 #include "page0zip.h"
 #include "trx0sys.h"
+#include "fc0fc.h"
+#include "fc0log.h"
 
 #ifndef UNIV_HOTBACKUP
 
@@ -400,6 +402,12 @@ buf_dblwr_init_or_load_pages(
 		goto leave_func;
 	}
 
+	if (fc_is_enabled()) {
+		trx_sys_multiple_tablespace_format = TRUE;
+		fc_start();
+		goto leave_func;
+	}
+
 	if (mach_read_from_4(doublewrite + TRX_SYS_DOUBLEWRITE_SPACE_ID_STORED)
 	    != TRX_SYS_DOUBLEWRITE_SPACE_ID_STORED_N) {
 
@@ -620,6 +628,12 @@ buf_dblwr_free(void)
 	buf_dblwr->in_use = NULL;
 
 	mutex_free(&buf_dblwr->mutex);
+
+	if (fc_is_enabled()) {
+		fc_destroy();
+		fc_log_destroy();
+	}
+
 	mem_free(buf_dblwr);
 	buf_dblwr = NULL;
 }
@@ -873,6 +887,13 @@ try_again:
 	to proceed. */
 	mutex_exit(&buf_dblwr->mutex);
 
+	if (WRITE_BACK == srv_flash_cache_write_mode && fc_is_enabled() && srv_flash_cache_enable_write) {
+		/* Write doublewrite buffer data to flash cache */
+		fc_write(buf_dblwr);
+		return;
+	}
+	/* not flash cache WRITE_BACK mode, or flash_cache_enable_write is turned off */
+
 	write_buf = buf_dblwr->write_buf;
 
 	for (ulint len2 = 0, i = 0;
@@ -930,6 +951,10 @@ flush:
 
 	/* Now flush the doublewrite buffer data to disk */
 	fil_flush(TRX_SYS_SPACE);
+
+	/* means not WRITE_BACK mode, or it's WRITE_BACK mode, but enable_write is turned off*/
+	if (fc_is_enabled())  
+		fc_block_remove_from_hash(buf_dblwr);
 
 	/* We know that the writes have been flushed to disk now
 	and in recovery we will find them in the doublewrite buffer

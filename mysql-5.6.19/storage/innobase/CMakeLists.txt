@@ -253,6 +253,10 @@ IF (MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
 				    PROPERTIES COMPILE_FLAGS -Od)
 ENDIF()
 
+IF (NOT WIN32) 
+SET (WITH_SNAPPY fc/fc0snappy.c) 
+ENDIF()
+
 SET(INNOBASE_SOURCES
 	api/api0api.cc
 	api/api0misc.cc
@@ -280,6 +284,17 @@ SET(INNOBASE_SOURCES
 	dyn/dyn0dyn.cc
 	eval/eval0eval.cc
 	eval/eval0proc.cc
+
+	fc/fc0fc.c
+	fc/fc0log.c 
+	fc/fc0recv.c 
+	fc/fc0fill.c 
+	fc/fc0flu.c 	
+	${WITH_SNAPPY}
+	fc/fc0warmup.c 
+	fc/fc0backup.c 
+	fc/fc0quicklz.c 
+
 	fil/fil0fil.cc
 	fsp/fsp0fsp.cc
 	fut/fut0fut.cc

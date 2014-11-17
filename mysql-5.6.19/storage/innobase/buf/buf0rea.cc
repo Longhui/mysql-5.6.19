@@ -183,17 +183,25 @@ buf_read_page_low(
 	}
 
 	if (zip_size) {
-		*err = fil_io(OS_FILE_READ | wake_later
-			      | ignore_nonexistent_pages,
-			      sync, space, zip_size, offset, 0, zip_size,
-			      bpage->zip.data, bpage);
+		if (fc_is_enabled()) {
+			*err = fc_read_page(sync,space, zip_size,
+				0, offset, wake_later, bpage->zip.data, bpage);
+		} else {
+			*err = fil_io(OS_FILE_READ | wake_later | ignore_nonexistent_pages,
+				sync, space, zip_size, offset, 0, zip_size,
+				bpage->zip.data, bpage);
+		}
 	} else {
 		ut_a(buf_page_get_state(bpage) == BUF_BLOCK_FILE_PAGE);
 
-		*err = fil_io(OS_FILE_READ | wake_later
-			      | ignore_nonexistent_pages,
-			      sync, space, 0, offset, 0, UNIV_PAGE_SIZE,
-			      ((buf_block_t*) bpage)->frame, bpage);
+		if (fc_is_enabled()) {
+			*err = fc_read_page(sync,space,zip_size,
+				0,offset,wake_later,((buf_block_t*) bpage)->frame,bpage);
+		} else {
+			*err = fil_io(OS_FILE_READ | wake_later | ignore_nonexistent_pages,
+				sync, space, 0, offset, 0, UNIV_PAGE_SIZE,
+				 ((buf_block_t*) bpage)->frame, bpage);
+		}
 	}
 
 	if (sync) {
@@ -213,7 +221,7 @@ buf_read_page_low(
 	if (sync) {
 		/* The i/o is already completed when we arrive from
 		fil_read */
-		if (!buf_page_io_complete(bpage)) {
+		if (!buf_page_io_complete(bpage, sync)) {
 			return(0);
 		}
 	}

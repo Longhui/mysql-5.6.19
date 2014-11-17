@@ -50,8 +50,10 @@ Created 11/5/1995 Heikki Tuuri
 #include "page0zip.h"
 #include "log0recv.h"
 #include "srv0srv.h"
+#include "srv0start.h"
 #include "srv0mon.h"
 #include "lock0lock.h"
+#include "fc0fill.h"
 
 #include "ha_prototypes.h"
 
@@ -149,8 +151,9 @@ buf_LRU_block_remove_hashed(
 	buf_page_t*	bpage,	/*!< in: block, must contain a file page and
 				be in a state where it can be freed; there
 				may or may not be a hash index to the page */
-	bool		zip);	/*!< in: true if should remove also the
+	bool		zip,	/*!< in: true if should remove also the
 				compressed page of an uncompressed page */
+	bool		fc_move);/*!< in: TRUE if should move/migrate the page to l2cache */
 /******************************************************************//**
 Puts a file page whose has no hash index to the free list. */
 static
@@ -792,7 +795,7 @@ scan_again:
 
 		/* Remove from the LRU list. */
 
-		if (buf_LRU_block_remove_hashed(bpage, true)) {
+		if (buf_LRU_block_remove_hashed(bpage, true, false)) {
 			buf_LRU_block_free_hashed_page((buf_block_t*) bpage);
 		} else {
 			ut_ad(block_mutex == &buf_pool->zip_mutex);
@@ -1803,6 +1806,7 @@ buf_LRU_free_page(
 	bool		zip)	/*!< in: true if should remove also the
 				compressed page of an uncompressed page */
 {
+	bool		fc_move = FALSE;
 	buf_page_t*	b = NULL;
 	buf_pool_t*	buf_pool = buf_pool_from_bpage(bpage);
 	const ulint	fold = buf_page_address_fold(bpage->space,
@@ -1842,6 +1846,8 @@ buf_LRU_free_page(
 		if (bpage->oldest_modification) {
 			goto func_exit;
 		}
+
+		fc_move = true;
 	} else if (bpage->oldest_modification > 0
 		   && buf_page_get_state(bpage) != BUF_BLOCK_FILE_PAGE) {
 
@@ -1882,7 +1888,7 @@ func_exit:
 #endif /* UNIV_SYNC_DEBUG */
 	ut_ad(buf_page_can_relocate(bpage));
 
-	if (!buf_LRU_block_remove_hashed(bpage, zip)) {
+	if (!buf_LRU_block_remove_hashed(bpage, zip, fc_move)) {
 		return(true);
 	}
 
@@ -2151,8 +2157,9 @@ buf_LRU_block_remove_hashed(
 	buf_page_t*	bpage,	/*!< in: block, must contain a file page and
 				be in a state where it can be freed; there
 				may or may not be a hash index to the page */
-	bool		zip)	/*!< in: true if should remove also the
-				compressed page of an uncompressed page */
+	bool		zip,	/*!< in: TRUE if should remove also the
+ 				compressed page of an uncompressed page */
+	bool		fc_move)/*!< in: TRUE if should move/migrate the page to l2cache */
 {
 	ulint			fold;
 	const buf_page_t*	hashed_bpage;
@@ -2314,13 +2321,23 @@ buf_LRU_block_remove_hashed(
 		return(false);
 
 	case BUF_BLOCK_FILE_PAGE:
-		memset(((buf_block_t*) bpage)->frame
-		       + FIL_PAGE_OFFSET, 0xff, 4);
-		memset(((buf_block_t*) bpage)->frame
-		       + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID, 0xff, 4);
-		UNIV_MEM_INVALID(((buf_block_t*) bpage)->frame,
-				 UNIV_PAGE_SIZE);
 		buf_page_set_state(bpage, BUF_BLOCK_REMOVE_HASH);
+		if (fc_move && fc_is_enabled() && buf_dblwr
+ 			&& srv_flash_cache_enable_write && !bpage->zip.data){
+            /* only allow uncompressed page to flash cache */
+            buf_pool_mutex_exit(buf_pool);
+			rw_lock_x_unlock(hash_lock);
+ 			fc_LRU_move(bpage);
+ 			buf_pool_mutex_enter(buf_pool);
+			rw_lock_x_lock(hash_lock);
+ 		}
+
+		//memset(((buf_block_t*) bpage)->frame
+		//       + FIL_PAGE_OFFSET, 0xff, 4);
+		//memset(((buf_block_t*) bpage)->frame
+		//      + FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID, 0xff, 4);
+		//UNIV_MEM_INVALID(((buf_block_t*) bpage)->frame,
+		//		 UNIV_PAGE_SIZE);
 
 		if (buf_pool->flush_rbt == NULL) {
 			bpage->space = ULINT32_UNDEFINED;
@@ -2352,6 +2369,21 @@ buf_LRU_block_remove_hashed(
 		if (zip && bpage->zip.data) {
 			/* Free the compressed page. */
 			void*	data = bpage->zip.data;
+
+			 if (fc_move && fc_is_enabled() 
+ 				&& buf_dblwr && srv_flash_cache_enable_write) {
+           		/* 
+				 * move zip page  to flash cache when buf pool 
+				 * also free the compressed page
+				 */
+				buf_pool_mutex_exit(buf_pool);
+				rw_lock_x_unlock(hash_lock);
+ 				fc_LRU_move(bpage);
+ 				buf_pool_mutex_enter(buf_pool);
+				rw_lock_x_lock(hash_lock);
+ 			}
+
+
 			bpage->zip.data = NULL;
 
 			ut_ad(!bpage->in_free_list);
@@ -2424,7 +2456,7 @@ buf_LRU_free_one_page(
 	rw_lock_x_lock(hash_lock);
 	mutex_enter(block_mutex);
 
-	if (buf_LRU_block_remove_hashed(bpage, true)) {
+	if (buf_LRU_block_remove_hashed(bpage, true, false)) {
 		buf_LRU_block_free_hashed_page((buf_block_t*) bpage);
 	}
 

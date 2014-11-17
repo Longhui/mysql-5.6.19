@@ -56,7 +56,7 @@ Created 11/5/1995 Heikki Tuuri
 #include "iostat.h"
 #include "sql_iostat.h"
 #include "resource_prof.h"
-
+#include "fc0fc.h"
 /*
 		IMPLEMENTATION OF THE BUFFER POOL
 		=================================
@@ -2303,10 +2303,10 @@ buf_block_align_instance(
 				FIL_PAGE_ARCH_LOG_NO_OR_SPACE_ID with
 				0xff and set the state to
 				BUF_BLOCK_REMOVE_HASH. */
-				ut_ad(page_get_space_id(page_align(ptr))
-				      == 0xffffffff);
-				ut_ad(page_get_page_no(page_align(ptr))
-				      == 0xffffffff);
+				//ut_ad(page_get_space_id(page_align(ptr))
+				//      == 0xffffffff);
+				//ut_ad(page_get_page_no(page_align(ptr))
+				//      == 0xffffffff);
 				break;
 			case BUF_BLOCK_FILE_PAGE:
 				ut_ad(block->page.space
@@ -3381,6 +3381,7 @@ buf_page_init_low(
 	bpage->access_time = 0;
 	bpage->newest_modification = 0;
 	bpage->oldest_modification = 0;
+	bpage->fc_block = NULL;
 	HASH_INVALIDATE(bpage, hash);
 #if defined UNIV_DEBUG_FILE_ACCESSES || defined UNIV_DEBUG
 	bpage->file_page_was_freed = FALSE;
@@ -4068,7 +4069,8 @@ UNIV_INTERN
 bool
 buf_page_io_complete(
 /*=================*/
-	buf_page_t*	bpage)	/*!< in: pointer to the block in question */
+	buf_page_t* bpage,	/*!< in: pointer to the block in question */
+	bool		sync)	/*!< in: whether is sync io */
 {
 	enum buf_io_fix	io_type;
 	buf_pool_t*	buf_pool = buf_pool_from_bpage(bpage);
@@ -4090,6 +4092,14 @@ buf_page_io_complete(
 		ulint	read_page_no;
 		ulint	read_space_id;
 		byte*	frame;
+
+		if (fc_is_enabled() && !sync) {
+			/* if page is read by flash cache async read,
+			first should reset state in page and flash cache block. */
+			if (bpage->fc_block) {
+				fc_complete_read(bpage);
+			}
+		}
 
 		if (buf_page_get_zip_size(bpage)) {
 			frame = bpage->zip.data;
@@ -5304,6 +5314,10 @@ buf_print_io(
 			fprintf(file, "---BUFFER POOL %lu\n", i);
 			buf_print_io_instance(&pool_info[i], file);
 		}
+	}
+
+	if (fc_is_enabled()) {
+		fc_status(pool_info_total->page_read_delta,pool_info_total->n_ra_pages_read, file);
 	}
 
 	mem_free(pool_info);

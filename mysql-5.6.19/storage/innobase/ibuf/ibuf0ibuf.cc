@@ -4106,8 +4106,9 @@ dump:
 
 		/* This is based on
 		row_ins_sec_index_entry_by_modify(BTR_MODIFY_LEAF). */
+/*
 		ut_ad(rec_get_deleted_flag(rec, page_is_comp(page)));
-
+*/
 		offsets = rec_get_offsets(rec, index, NULL, ULINT_UNDEFINED,
 					  &heap);
 		update = row_upd_build_sec_rec_difference_binary(

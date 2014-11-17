@@ -70,6 +70,8 @@ Created 10/8/1995 Heikki Tuuri
 
 #include "mysql/plugin.h"
 #include "mysql/service_thd_wait.h"
+#include "fc0flu.h"
+#include "fc0log.h"
 
 /* The following is the maximum allowed duration of a lock wait. */
 UNIV_INTERN ulint	srv_fatal_semaphore_wait_threshold = 600;
@@ -665,6 +667,7 @@ srv_thread_type_validate(
 	case SRV_NONE:
 		break;
 	case SRV_WORKER:
+	case SRV_FLASH_CACHE:
 	case SRV_PURGE:
 	case SRV_MASTER:
 		return(TRUE);
@@ -1324,6 +1327,123 @@ srv_export_innodb_status(void)
 
 	mutex_enter(&srv_innodb_monitor_mutex);
 
+	if (fc_is_enabled()) {
+		ulint i;
+		ulint distance;
+		ulint fc_size = fc_get_size();
+		ulint buf_read_delta = 0;
+		
+		time_t cur_time = ut_time();		
+
+		buf_read_delta = stat.n_pages_read - flash_cache_stat_global.n_buf_pages_read;
+
+		export_vars.innodb_flash_cache_write_off = fc->write_off;
+		export_vars.innodb_flash_cache_write_round = fc->write_round;		
+
+		export_vars.innodb_flash_cache_flush_off = fc->flush_off;
+		export_vars.innodb_flash_cache_flush_round = fc->flush_round;	
+
+		if (fc->write_round == fc->flush_round) {
+			distance = fc->write_off - fc->flush_off;
+		} else {
+			distance = fc_get_size() + fc->write_off - fc->flush_off;
+		}
+		export_vars.innodb_flash_cache_distance = distance;
+		export_vars.innodb_flash_cache_distance_ratio 
+			= (ulong)((distance * 100.0) / fc_size);	
+		
+		export_vars.innodb_flash_cache_dirty = srv_flash_cache_dirty;
+		export_vars.innodb_flash_cache_dirty_pct 
+			= (ulong)((srv_flash_cache_dirty * 100.0) / fc_size);
+
+		export_vars.innodb_flash_cache_pages_used = srv_flash_cache_used;
+		export_vars.innodb_flash_cache_pages_used_pct 
+			= (ulong)((srv_flash_cache_used * 100.0) / fc_size); 
+
+		export_vars.innodb_flash_cache_pages_read = srv_flash_cache_read;
+
+		if (buf_read_delta != 0) {
+			export_vars.innodb_flash_cache_pages_read_hit_pct 
+				= (ulong)(100.0*(srv_flash_cache_read - flash_cache_stat_global.n_pages_read)
+					/ buf_read_delta);
+		} else {
+			export_vars.innodb_flash_cache_pages_read_hit_pct = 0;
+		}
+		if ((stat.n_pages_read + stat.n_ra_pages_read) != 0) {
+			export_vars.innodb_flash_cache_pages_read_hit_pct_total
+				= (ulong)((100.0*srv_flash_cache_read)
+					/ (stat.n_pages_read + stat.n_ra_pages_read));
+		} else {
+			export_vars.innodb_flash_cache_pages_read_hit_pct_total = 0;
+		}
+		if ((srv_flash_cache_read - flash_cache_stat_global.n_pages_read) > 0) {
+			export_vars.innodb_flash_cache_pages_read_per_second 
+				= (ulong)((srv_flash_cache_read - flash_cache_stat_global.n_pages_read) 
+					/ difftime(cur_time, flash_cache_stat_global.last_printout_time));
+		} else {
+			export_vars.innodb_flash_cache_pages_read_per_second = 0;	
+		}
+		export_vars.innodb_flash_cache_aio_read = srv_flash_cache_aio_read;
+		if (srv_flash_cache_read) {		
+			export_vars.innodb_flash_cache_compress_read_pct 
+				= (ulong)((srv_flash_cache_decompress * 100.0) / srv_flash_cache_read);
+		} else {
+			export_vars.innodb_flash_cache_compress_read_pct = 0;
+		}
+
+		export_vars.innodb_flash_cache_pages_write = srv_flash_cache_write;
+
+		if ((srv_flash_cache_write - flash_cache_stat_global.n_pages_write) > 0) {
+			export_vars.innodb_flash_cache_pages_write_per_second 
+				= (ulong)((srv_flash_cache_write - flash_cache_stat_global.n_pages_write) 
+					/ difftime(cur_time, flash_cache_stat_global.last_printout_time));
+		} else {
+			export_vars.innodb_flash_cache_pages_write_per_second = 0;
+		}
+		if (srv_flash_cache_used_nocompress) {
+			export_vars.innodb_flash_cache_compress_pct 
+				= (ulong)(100 - (srv_flash_cache_used * 100.0) / srv_flash_cache_used_nocompress);
+		} else {
+			export_vars.innodb_flash_cache_compress_pct = 0;
+		}
+
+		export_vars.innodb_flash_cache_pages_flush = srv_flash_cache_flush;
+
+		if ((srv_flash_cache_flush - flash_cache_stat_global.n_pages_flush) > 0) {
+			export_vars.innodb_flash_cache_pages_flush_per_second 
+				= (ulong)((srv_flash_cache_flush - flash_cache_stat_global.n_pages_flush) 
+					/ difftime(cur_time, flash_cache_stat_global.last_printout_time));
+		} else {
+			export_vars.innodb_flash_cache_pages_flush_per_second = 0;
+		}
+		
+		export_vars.innodb_flash_cache_pages_merge_write = srv_flash_cache_merge_write;
+		
+		export_vars.innodb_flash_cache_pages_migrate = srv_flash_cache_migrate;
+
+		if ((srv_flash_cache_migrate - flash_cache_stat_global.n_pages_migrate) > 0) {
+			export_vars.innodb_flash_cache_pages_migrate_per_second 
+				= (ulong)((srv_flash_cache_migrate - flash_cache_stat_global.n_pages_migrate) 
+					/ difftime(cur_time, flash_cache_stat_global.last_printout_time));
+		} else {
+			export_vars.innodb_flash_cache_pages_migrate_per_second = 0;
+		}
+		export_vars.innodb_flash_cache_pages_move = srv_flash_cache_move;
+
+		if ((srv_flash_cache_move - flash_cache_stat_global.n_pages_move) > 0) {
+			export_vars.innodb_flash_cache_pages_move_per_second 
+				= (ulong)((srv_flash_cache_move - flash_cache_stat_global.n_pages_move) 
+					/ difftime(cur_time, flash_cache_stat_global.last_printout_time));
+		} else {
+			export_vars.innodb_flash_cache_pages_move_per_second = 0;
+		}
+
+		export_vars.innodb_flash_cache_wait_for_aio = srv_flash_cache_wait_aio;
+
+		fc_update_status(UPDATE_GLOBAL_STATUS);
+		flash_cache_stat_global.n_buf_pages_read = stat.n_pages_read;
+	}
+
 	export_vars.innodb_data_pending_reads =
 		os_n_pending_reads;
 
@@ -1332,7 +1452,7 @@ srv_export_innodb_status(void)
 
 	export_vars.innodb_data_pending_fsyncs =
 		fil_n_pending_log_flushes
-		+ fil_n_pending_tablespace_flushes;
+		+ fil_n_pending_tablespace_flushes + fil_n_pending_flash_cache_flushes;
 
 	export_vars.innodb_data_fsyncs = os_n_fsyncs;
 
@@ -2875,5 +2995,157 @@ srv_purge_wakeup(void)
 			srv_release_threads(SRV_WORKER, n_workers);
 		}
 	}
+}
+
+/*********************************************************************//**
+The flash cache flush thread to flush ssd dirty page to disk.
+@return	a dummy parameter */
+UNIV_INTERN
+os_thread_ret_t
+srv_fc_flush_thread(
+/*==============*/
+	void*	arg)	/*!< in: a dummy parameter required by
+			os_thread_create */
+{
+	srv_slot_t*	slot;
+
+	buf_pool_stat_t buf_stat;
+	ulint n_ios;
+	ulint n_ios_very_old;
+	ulint n_pend_ios;
+	ulint n_flush;	
+	ulint cur_time;
+	ulint i;
+	ulint old_activity_count;
+	
+	mutex_enter(&kernel_mutex);
+
+	slot = srv_table_reserve_slot(SRV_FLASH_CACHE);
+	++srv_n_threads_active[SRV_FLASH_CACHE];
+
+	mutex_exit(&kernel_mutex);
+
+	flash_cache_mutex_enter();
+	fc_validate();
+	fc_log_update_commit_status();
+	srv_fc_flush_last_dump = ut_time_ms();
+	flash_cache_mutex_exit();
+
+	while (srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+
+		if (srv_flash_cache_enable_dump) {
+			fc_flush_test_and_dump_blkmeta(srv_fc_flush_last_dump);
+		}
+		
+		old_activity_count = srv_activity_count;
+		buf_get_total_stat(&buf_stat);
+		n_ios_very_old = log_sys->n_log_ios + buf_stat.n_pages_read + buf_stat.n_pages_written;
+
+		for ( i = 0; i < 10; i++ ) {		
+			while(!srv_flash_cache_enable_write) {	
+				if(srv_shutdown_state != SRV_SHUTDOWN_NONE)
+					goto srv_shutdown;
+				os_thread_sleep(1000000);
+			}
+
+			cur_time = ut_time_ms();
+			n_flush = fc_flush_to_disk(FALSE);
+			cur_time = ut_time_ms() - cur_time;
+
+			if (n_flush == 0) {
+				srv_flash_cache_thread_op_info = "flash cache thread is idle";
+				os_thread_sleep(ut_min(1000000, (1000-cur_time)*1000));
+			} else if (n_flush <= PCT_IO_FC(srv_fc_write_cache_flush_pct)) {
+				srv_flash_cache_thread_op_info = "flusing small flash cache pages";
+				os_thread_sleep(ut_min(1000000, (1000-cur_time)*1000));
+			} else {
+				srv_flash_cache_thread_op_info = "flusing full flash cache pages";
+				os_thread_sleep(ut_min(200000, (1000-cur_time)*1000));
+			}
+		
+		}
+
+		buf_get_total_stat(&buf_stat);
+		n_pend_ios = buf_get_n_pending_ios() + log_sys->n_pending_writes;
+		n_ios = log_sys->n_log_ios + buf_stat.n_pages_read;
+		if (n_pend_ios < SRV_PEND_IO_THRESHOLD
+			&& (n_ios - n_ios_very_old < SRV_PAST_IO_ACTIVITY)) {
+
+			srv_flash_cache_thread_op_info = "flusing full flash cache pages in idle per 10 sec";
+			while(!srv_flash_cache_enable_write) {
+	
+				if(srv_shutdown_state != SRV_SHUTDOWN_NONE)
+					goto srv_shutdown;
+				os_thread_sleep(1000000);
+			}
+
+			fc_flush_to_disk(TRUE);
+		}		
+
+		fc_flush_test_and_flush_log(srv_fc_flush_last_commit);
+
+		while (old_activity_count == srv_activity_count && 
+			srv_shutdown_state == SRV_SHUTDOWN_NONE) {
+			srv_flash_cache_thread_op_info = "flushing full flash cache pages in idle";
+			while(!srv_flash_cache_enable_write) {
+	
+				if(srv_shutdown_state != SRV_SHUTDOWN_NONE)
+					goto srv_shutdown;
+				os_thread_sleep(1000000);
+			}
+
+			if (fc_flush_to_disk(TRUE) == 0)
+				break;
+		}
+		
+		fc_flush_test_and_flush_log(srv_fc_flush_last_commit);
+
+	}
+
+srv_shutdown:
+	/* waiting for master thread to quit first */
+	while(strcmp(srv_main_thread_op_info,"waiting for server activity")) {
+		os_thread_sleep(1000000);
+	
+		if(srv_flash_cache_enable_write)
+			fc_flush_to_disk(TRUE);
+	}
+
+	if (!srv_flash_cache_fast_shutdown) {
+		ut_print_timestamp(stderr);
+		fprintf(stderr," srv_flash_cache_fasht_shutdown is OFF, flush flash cache blocks to disk.");
+		/* flush all flash cache block to disk */
+		i = 0;
+		for(;;){
+			i++;
+            fc_flush_to_disk(TRUE);
+			flash_cache_mutex_enter();	
+			if (i >= 30) {
+				i = 0;
+           		fprintf(stderr,".%.0f%%.", (fc_get_available() * 100.0) / fc_get_size());
+			}
+            if (fc_get_distance() == 0){
+				flash_cache_mutex_exit();
+				fprintf(stderr,"100%%...\n");
+                ut_print_timestamp(stderr);
+                fprintf(stderr," all flash cache blocks have been flushed to disk.\n");
+                break;
+			}
+			flash_cache_mutex_exit();
+		}
+	}
+
+	mutex_enter(&kernel_mutex);
+
+	/* Decrement the active count. */
+	srv_suspend_thread(slot);
+
+	slot->in_use = FALSE;
+
+	mutex_exit(&kernel_mutex);
+
+	os_thread_exit(NULL);
+
+	OS_THREAD_DUMMY_RETURN;	/* Not reached, avoid compiler warning */
 }
 

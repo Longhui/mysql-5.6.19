@@ -49,6 +49,7 @@ Created 12/9/1995 Heikki Tuuri
 #include "trx0sys.h"
 #include "trx0trx.h"
 #include "srv0mon.h"
+#include "fc0fc.h"
 
 /*
 General philosophy of InnoDB redo-logs:
@@ -3280,6 +3281,9 @@ loop:
 			case SRV_WORKER:
 				thread_type = "worker threads";
 				break;
+			case SRV_FLASH_CACHE:
+				thread_type = "l2cache thread";
+				break;
 			case SRV_MASTER:
 				thread_type = "master thread";
 				break;
@@ -3438,6 +3442,9 @@ loop:
 
 	if (!srv_read_only_mode) {
 		fil_flush_file_spaces(FIL_TABLESPACE);
+		if (fc_is_enabled()) {
+			fil_flush_file_spaces(FIL_FLASH_CACHE);
+		}
 		fil_flush_file_spaces(FIL_LOG);
 	}
 
@@ -3481,6 +3488,10 @@ loop:
 		fil_write_flushed_lsn_to_data_files(lsn, arch_log_no);
 
 		fil_flush_file_spaces(FIL_TABLESPACE);
+
+		if (fc_is_enabled()) {
+			fil_flush_file_spaces(FIL_FLASH_CACHE);
+		}
 	}
 
 	fil_close_all_files();

@@ -28,6 +28,7 @@ Created 10/25/1995 Heikki Tuuri
 #include <debug_sync.h>
 #include <my_dbug.h>
 
+#include "fc0fc.h"
 #include "mem0mem.h"
 #include "hash0hash.h"
 #include "os0file.h"
@@ -123,6 +124,9 @@ UNIV_INTERN ulint	fil_n_log_flushes			= 0;
 UNIV_INTERN ulint	fil_n_pending_log_flushes		= 0;
 /** Number of pending tablespace flushes */
 UNIV_INTERN ulint	fil_n_pending_tablespace_flushes	= 0;
+
+/** Number of pending flash cache flushes */
+UNIV_INTERN ulint	fil_n_pending_flash_cache_flushes	= 0;
 
 /** Number of files currently open */
 UNIV_INTERN ulint	fil_n_file_opened			= 0;
@@ -366,7 +370,7 @@ fil_space_belongs_in_lru(
 /*=====================*/
 	const fil_space_t*	space)	/*!< in: file space */
 {
-	return(space->purpose == FIL_TABLESPACE
+	return((space->purpose == FIL_TABLESPACE || space->purpose == FIL_FLASH_CACHE)
 	       && fil_is_user_tablespace_id(space->id));
 }
 
@@ -489,6 +493,30 @@ fil_space_get_by_id(
 	return(space);
 }
 
+/*******************************************************************//**
+Returns the table name by a given id, NULL if not found. */
+UNIV_INTERN
+char*
+fil_space_get_table_name_by_id(
+/*================*/
+                               ulint	id)	/*!< in: space id */
+{
+	fil_space_t*	space;
+    
+    mutex_enter(&fil_system->mutex);
+    
+	HASH_SEARCH(hash, fil_system->spaces, id,
+                fil_space_t*, space,
+                ut_ad(space->magic_n == FIL_SPACE_MAGIC_N),
+                space->id == id);
+    
+    mutex_exit(&fil_system->mutex);
+    
+    if (space)
+        return(space->name);
+    
+    return NULL;
+}
 /*******************************************************************//**
 Returns the table space by a given name, NULL if not found. */
 UNIV_INLINE
@@ -650,7 +678,7 @@ fil_node_create(
 
 	node->name = mem_strdup(name);
 
-	ut_a(!is_raw || srv_start_raw_disk_in_use);
+	ut_a(!is_raw || srv_start_raw_disk_in_use || srv_flash_cache_is_raw);
 
 	node->sync_event = os_event_create();
 	node->is_raw_disk = is_raw;
@@ -1129,7 +1157,11 @@ close_more:
 	/* Flush tablespaces so that we can close modified files in the LRU
 	list */
 
-	fil_flush_file_spaces(FIL_TABLESPACE);
+	if (space_id == FLASH_CACHE_SPACE) {
+		fil_flush_file_spaces(FIL_FLASH_CACHE);
+	} else {
+		fil_flush_file_spaces(FIL_TABLESPACE);
+	}
 
 	count++;
 
@@ -1488,7 +1520,8 @@ fil_space_get_space(
 		return(NULL);
 	}
 
-	if (space->size == 0 && space->purpose == FIL_TABLESPACE) {
+	if (space->size == 0 
+		&& (space->purpose == FIL_TABLESPACE || space->purpose == FIL_FLASH_CACHE)) {
 		ut_a(id != 0);
 
 		mutex_exit(&fil_system->mutex);
@@ -4567,7 +4600,7 @@ directory. We retry 100 times if os_file_readdir_next_file() returns -1. The
 idea is to read as much good data as we can and jump over bad data.
 @return 0 if ok, -1 if error even after the retries, 1 if at the end
 of the directory */
-static
+UNIV_INTERN
 int
 fil_file_readdir_next_file(
 /*=======================*/
@@ -5496,6 +5529,8 @@ fil_io(
 	ulint		wake_later;
 	os_offset_t	offset;
 	ibool		ignore_nonexistent_pages;
+	ulint		using_ibuf_aio;
+	ulint		is_fc_aio = 0;
 
 	is_log = type & OS_FILE_LOG;
 	type = type & ~OS_FILE_LOG;
@@ -5505,6 +5540,15 @@ fil_io(
 
 	ignore_nonexistent_pages = type & BUF_READ_IGNORE_NONEXISTENT_PAGES;
 	type &= ~BUF_READ_IGNORE_NONEXISTENT_PAGES;
+
+	using_ibuf_aio = type & OS_FORCE_IBUF_AIO;
+	type = type & ~OS_FORCE_IBUF_AIO;
+	
+	if (fc_is_enabled()) {
+		if (space_id == FLASH_CACHE_SPACE && type == OS_FILE_WRITE && sync == FALSE) {
+			is_fc_aio = 1;
+		}
+	}
 
 	ut_ad(byte_offset < UNIV_PAGE_SIZE);
 	ut_ad(!zip_size || !byte_offset);
@@ -5525,8 +5569,8 @@ fil_io(
 	ut_ad(recv_no_ibuf_operations
 	      || type == OS_FILE_WRITE
 	      || !ibuf_bitmap_page(zip_size, block_offset)
-	      || sync
-	      || is_log);
+	      || sync || is_log
+		  || (space_id == FLASH_CACHE_SPACE) || space_id >= 0);
 # endif /* UNIV_LOG_DEBUG */
 	if (sync) {
 		mode = OS_AIO_SYNC;
@@ -5536,6 +5580,11 @@ fil_io(
 		   && !recv_no_ibuf_operations
 		   && ibuf_page(space_id, zip_size, block_offset, NULL)) {
 		mode = OS_AIO_IBUF;
+	} else if (using_ibuf_aio) {
+		ut_ad(type == OS_FILE_READ);
+		mode = OS_AIO_IBUF;
+	} else if (is_fc_aio) {
+		mode = OS_AIO_FLASH_CACHE_WRITE;
 	} else {
 		mode = OS_AIO_NORMAL;
 	}
@@ -5573,7 +5622,8 @@ fil_io(
 		return(DB_TABLESPACE_DELETED);
 	}
 
-	ut_ad(mode != OS_AIO_IBUF || space->purpose == FIL_TABLESPACE);
+	ut_ad(mode != OS_AIO_IBUF || space->purpose == FIL_TABLESPACE
+		|| space->purpose == FIL_FLASH_CACHE);
 
 	node = UT_LIST_GET_FIRST(space->chain);
 
@@ -5632,7 +5682,8 @@ fil_io(
 	/* Check that at least the start offset is within the bounds of a
 	single-table tablespace, including rollback tablespaces. */
 	if (UNIV_UNLIKELY(node->size <= block_offset)
-	    && space->id != 0 && space->purpose == FIL_TABLESPACE) {
+	    && space->id != 0 
+		&& (space->purpose == FIL_TABLESPACE || space->purpose == FIL_FLASH_CACHE)) {
 
 		fil_report_invalid_page_access(
 			block_offset, space_id, space->name, byte_offset,
@@ -5769,7 +5820,16 @@ fil_aio_wait(
 
 	if (fil_node->space->purpose == FIL_TABLESPACE) {
 		srv_set_io_thread_op_info(segment, "complete io for buf page");
-		buf_page_io_complete(static_cast<buf_page_t*>(message));
+		if (message == NULL) {
+			return;
+		}
+		buf_page_io_complete(static_cast<buf_page_t*>(message), FALSE);
+	} else if (fil_node->space->purpose == FIL_FLASH_CACHE) {
+		srv_set_io_thread_op_info(segment, "complete io for flash cache");
+		if (message == NULL) {
+			return;
+		}
+		buf_page_io_complete(static_cast<buf_page_t*>(message), FALSE);
 	} else {
 		srv_set_io_thread_op_info(segment, "complete io for log");
 		log_io_complete(static_cast<log_group_t*>(message));
@@ -5840,6 +5900,8 @@ fil_flush(
 
 		if (space->purpose == FIL_TABLESPACE) {
 			fil_n_pending_tablespace_flushes++;
+		} else if (space->purpose == FIL_FLASH_CACHE) {
+				fil_n_pending_flash_cache_flushes++;
 		} else {
 			fil_n_pending_log_flushes++;
 			fil_n_log_flushes++;
@@ -5905,6 +5967,8 @@ skip_flush:
 
 		if (space->purpose == FIL_TABLESPACE) {
 			fil_n_pending_tablespace_flushes--;
+		} else if (space->purpose == FIL_FLASH_CACHE) {
+			fil_n_pending_flash_cache_flushes--;
 		} else {
 			fil_n_pending_log_flushes--;
 		}
