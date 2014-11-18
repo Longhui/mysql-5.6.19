@@ -26,7 +26,7 @@ UNIV_INTERN ulint srv_fc_flush_should_commit_log_flush = 0;
 /* whether  the fc log should be commit to ssd, if not zero, the log should be commited */
 UNIV_INTERN ulint srv_fc_flush_should_commit_log_write = 0;
 
-#define FLASH_CACHE_FLUSH_LOG_PERIOD 600000 /* 600s */
+#define FLASH_CACHE_FLUSH_LOG_PERIOD 60000 /* 60s */
 
 #define FLASH_CACHE_DUMP_BLOCK_META_PERIOD 60000 /* 60s */
 

@@ -5317,7 +5317,8 @@ buf_print_io(
 	}
 
 	if (fc_is_enabled()) {
-		fc_status(pool_info_total->page_read_delta, pool_info_total->n_ra_pages_read, pool_info_total->n_pages_read, file);
+		fc_status(pool_info_total->page_read_delta, pool_info_total->n_ra_pages_read, 
+			pool_info_total->n_pages_read, file);
 	}
 
 	mem_free(pool_info);

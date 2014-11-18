@@ -2377,10 +2377,10 @@ buf_LRU_block_remove_hashed(
 				 * also free the compressed page
 				 */
 				buf_pool_mutex_exit(buf_pool);
-				rw_lock_x_unlock(hash_lock);
+				//rw_lock_x_unlock(hash_lock);
  				fc_LRU_move(bpage);
  				buf_pool_mutex_enter(buf_pool);
-				rw_lock_x_lock(hash_lock);
+				//rw_lock_x_lock(hash_lock);
  			}
 
 

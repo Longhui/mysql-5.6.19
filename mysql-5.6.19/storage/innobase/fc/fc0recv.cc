@@ -97,7 +97,7 @@ fc_recv_read_block_to_hash_table(
 						if (UNIV_PAGE_SIZE != sdc) {
 							ut_print_timestamp(stderr);
 							fprintf(stderr, "InnoDB:L2 cache: recv decompress page size:%d"
-								" should be 16384.\n\n\n", (int)sdc);
+								" should be %d.\n\n\n", (int)sdc, (int)UNIV_PAGE_SIZE);
 							ut_error;
 						}
 					}
@@ -479,11 +479,11 @@ fc_recv(void)
 	ut_a(fc_log->first_use == FALSE);
 	ut_a(fc_log->been_shutdown == FALSE);
 
-	if (fc_log->log_verison != FLASH_CACHE_VERSION_INFO_V5) {
+	if (fc_log->log_verison != FLASH_CACHE_VERSION_INFO_V61) {
 		ut_print_timestamp(stderr);
 		fprintf(stderr, " InnoDB: L2 Cache: current version is %lu, \n"
 			"  but the Cache need recovery is %lu. please use the same version to do recovery. \n", 
-			FLASH_CACHE_VERSION_INFO_V5, fc_log->log_verison);
+			FLASH_CACHE_VERSION_INFO_V61, fc_log->log_verison);
 		ut_error;
 	}
 

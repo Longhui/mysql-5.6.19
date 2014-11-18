@@ -51,6 +51,7 @@ Modified by Thomas Wen (wenzhenghu.zju@gmail.com)
 #define FLASH_CACHE_LOG_CHECKSUM		4294967291UL
 #define FLASH_CACHE_VERSION_INFO_V4	55304UL
 #define FLASH_CACHE_VERSION_INFO_V5	55305UL
+#define FLASH_CACHE_VERSION_INFO_V61 56191UL
 
 
 typedef struct fc_log_stat_struct		 fc_log_stat_t;

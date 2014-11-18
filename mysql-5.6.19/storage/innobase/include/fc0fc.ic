@@ -296,7 +296,7 @@ fc_block_need_compress(
 	} 
 	
 	blk_size = fc_get_block_size();
-	if (blk_size == UNIV_PAGE_SIZE/KILO_BYTE) {
+	if (blk_size == UNIV_PAGE_SIZE / KILO_BYTE) {
 		/* flash cache block size is UNIV_PAGE_SIZE, no need to compress */
 		return FALSE;
 	}

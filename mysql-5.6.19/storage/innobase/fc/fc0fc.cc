@@ -85,7 +85,7 @@ UNIV_INTERN ulong 	srv_flash_cache_compress_algorithm = FC_BLOCK_COMPRESS_SNAPPY
 /* whether use malloc or buf_block_alloc to buffer the compress InnoDB data page */
 UNIV_INTERN my_bool srv_flash_cache_decompress_use_malloc = FALSE;
 /* flash cache version info */
-UNIV_INTERN ulong srv_flash_cache_version = FLASH_CACHE_VERSION_INFO_V5;
+UNIV_INTERN ulong srv_flash_cache_version = FLASH_CACHE_VERSION_INFO_V61;
 
 
 
@@ -566,7 +566,7 @@ fc_load(void)
 		return;
 	}
 
-	/* if the log version is not 55305, the compress algorithm must be quicklz or not */
+	/* if the log version is not equal or bigger than 55305, the compress algorithm must be quicklz or not */
 	if ((fc_log->log_verison < FLASH_CACHE_VERSION_INFO_V5)
 			&& (srv_flash_cache_compress_algorithm == FC_BLOCK_COMPRESS_SNAPPY)) {
 		ut_print_timestamp(stderr);
@@ -1076,6 +1076,7 @@ fc_sync_hash_single_page(
 {
 	ulint page_type;
 	ulint wf_size;
+	ulint zip_size;
 	fc_block_t* wf_block = NULL;
 
 	ut_ad(mutex_own(&fc->mutex));
@@ -1098,8 +1099,15 @@ fc_sync_hash_single_page(
 	srv_flash_cache_used_nocompress += fc_block_get_orig_size(wf_block);
 	srv_flash_cache_write++;
 
-	/* get page type from doublewrite buffer */
-    page_type = fil_page_get_type(((buf_block_t*) bpage)->frame);
+	/* get page type from page */
+	zip_size = fil_space_get_zip_size(bpage->space);
+
+	if (zip_size) {
+		page_type = fil_page_get_type(bpage->zip.data);
+	} else {
+		page_type = fil_page_get_type(((buf_block_t*) bpage)->frame);
+	}
+	
 	if (page_type == FIL_PAGE_INDEX) {
 		page_type = 1;
 	}
@@ -1124,6 +1132,7 @@ fc_write_single_page(
 	ulint need_compress;
 	ulint block_offset, byte_offset;
 
+	byte* page = NULL;
 	byte* zip_buf = NULL;
 	byte* zip_buf_unalign = NULL;
 
@@ -1140,18 +1149,25 @@ fc_write_single_page(
 
 	zip_size = fil_space_get_zip_size(bpage->space);
 
-	#ifdef UNIV_FLASH_CACHE_TRACE
+
+
 	if (zip_size == 0) {
+		page = ((buf_block_t*)bpage)->frame;
+#ifdef UNIV_FLASH_CACHE_TRACE		
 		if (fc_dw_page_corrupted((buf_block_t*)bpage)) {
 			ut_error;
 		}
+#endif		
 	} else {
-		if (buf_page_is_corrupted(true, ((buf_block_t*) bpage)->frame, zip_size)) {
-			buf_page_print(((buf_block_t*) bpage)->frame, zip_size, BUF_PAGE_PRINT_NO_CRASH);
+		page = bpage->zip.data;
+#ifdef UNIV_FLASH_CACHE_TRACE		
+		if (buf_page_is_corrupted(true, page, zip_size)) {
+			buf_page_print(page, zip_size, BUF_PAGE_PRINT_NO_CRASH);
 			ut_error;
 		}
+#endif			
 	}
-#endif
+
 
 	/* 
 	 * step 1: calc and store each block compressed size or zip size if no need compress
@@ -1334,9 +1350,10 @@ retry:
 				block_offset, byte_offset, data_size * blk_size * KILO_BYTE,
 				zip_buf, NULL);
 	} else {
+	
 		err = fil_io(OS_FILE_WRITE, TRUE, FLASH_CACHE_SPACE, 0,
 				block_offset, byte_offset, data_size * blk_size * KILO_BYTE,
-				((buf_block_t*)bpage)->frame, NULL);
+				page, NULL);
 	}
 
 	if (err != DB_SUCCESS) {
