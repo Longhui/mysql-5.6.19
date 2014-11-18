@@ -2589,6 +2589,9 @@ void Rows_log_event::exchange_update_rows(PRINT_EVENT_INFO *print_event_info,
 
     memcpy(start_pos, swap_buff2, length2);
     memcpy(start_pos + length2, swap_buff1, length1);
+
+	my_free((void*)swap_buff1);
+	my_free((void*)swap_buff2);	
   }
 
   /* Move to rows_buff */
@@ -2742,6 +2745,7 @@ void Log_event::print_base64(IO_CACHE* file,
 
   if (is_flashback) //Flashback
   {
+    uint32 fb_size = size;
     switch (ptr[4]) {
       case WRITE_ROWS_EVENT:
         ptr[4]= DELETE_ROWS_EVENT;
@@ -2751,9 +2755,14 @@ void Log_event::print_base64(IO_CACHE* file,
         break;
       case UPDATE_ROWS_EVENT:
         Rows_log_event *ev= NULL;
-        ev= new Update_rows_log_event((const char*) ptr, size,
+        if (checksum_alg != BINLOG_CHECKSUM_ALG_UNDEF &&
+          checksum_alg != BINLOG_CHECKSUM_ALG_OFF)
+        fb_size-= BINLOG_CHECKSUM_LEN; // checksum is displayed through the header
+
+	 	ev= new Update_rows_log_event((const char*) ptr, fb_size,
                                        glob_description_event);
         ev->exchange_update_rows(print_event_info, ptr);
+		delete ev;
         break;
     }
   }
