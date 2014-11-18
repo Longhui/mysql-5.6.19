@@ -231,7 +231,7 @@ fc_warmup_tablespace(
 			fc_block_insert_into_hash(b);					
 
 			fc_inc_write_off(blk_size);
-			fc_inc_flush_off(blk_size);
+			//fc_inc_flush_off(blk_size); //test
 				
 			//rw_lock_x_unlock(&fc->hash_rwlock);
 				

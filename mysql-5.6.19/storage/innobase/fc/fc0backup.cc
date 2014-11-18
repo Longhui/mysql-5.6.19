@@ -94,7 +94,8 @@ fc_backup(
 	fc_block_t* blk = NULL;
 
 	fc_bkp_info_t* bkp_info = NULL;
-	fc_bkp_blkmeta_t* blk_metas = NULL;
+	fc_bkp_blkmeta_t* blk_metas_unalign = NULL;
+	fc_bkp_blkmeta_t* blk_metas = NULL;	
 	
 	ulint i, pos;	
 	ulint blk_metas_size;
@@ -160,12 +161,15 @@ fc_backup(
 
 			/* alloc memory for backup */
 			bkp_info = (fc_bkp_info_t*)ut_malloc(sizeof(fc_bkp_info_t));
-			blk_metas = (fc_bkp_blkmeta_t*)ut_malloc(n_dirty_pages * sizeof(fc_bkp_blkmeta_t));
+			blk_metas_size = ((n_dirty_pages * sizeof(fc_bkp_blkmeta_t)) 
+								/ UNIV_PAGE_SIZE + 1) * UNIV_PAGE_SIZE;
+			blk_metas_unalign = (fc_bkp_blkmeta_t*)ut_malloc(blk_metas_size + UNIV_PAGE_SIZE);
+			blk_metas = (fc_bkp_blkmeta_t*)ut_align(blk_metas_unalign, UNIV_PAGE_SIZE);	
 
 #ifdef UNIV_FLASH_CACHE_TRACE
 			ut_print_timestamp(stderr);
 			fprintf(stderr, " InnoDB: L2 Cache backup:alloced blk metadata size %d\n", 
-				(int)n_dirty_pages * sizeof(fc_bkp_blkmeta_t));
+				(int)blk_metas_size);
 #endif				
 			
 			len_tmp = strlen(bkp_dir) + sizeof("/ib_fc_backup_creating");
@@ -302,17 +306,17 @@ fc_backup(
 			/* then write block metadata to backup file */
 			//offset_high = (file_offset >> (32 - KILO_BYTE_SHIFT));
 			//offset_low  = ((file_offset << KILO_BYTE_SHIFT) & 0xFFFFFFFFUL);
-
-			blk_metas_size = ((n_backup_pages * sizeof(fc_bkp_blkmeta_t)) 
-								/ KILO_BYTE + 1) * KILO_BYTE;
+			
 #ifdef UNIV_FLASH_CACHE_TRACE
 			ut_print_timestamp(stderr);
-			fprintf(stderr, " InnoDB: L2 Cache backup:blk metadata size %d\n", (int)blk_metas_size);
-#endif		
-			if (os_file_write(bkp_file_path, bkp_fd, blk_metas, file_offset * KILO_BYTE, 
-					blk_metas_size) == 0) {
+			fprintf(stderr, " InnoDB: L2 Cache backup:blk metadata size %d, back_page %d\n", 
+				(int)blk_metas_size, (int)n_backup_pages);
+#endif
+
+			if (os_file_write(bkp_file_path, bkp_fd, (byte*)blk_metas, 
+				file_offset * KILO_BYTE, blk_metas_size) == 0) {
 				fc_bkp_print_io_error();
-				ut_free((void *)blk_metas);
+				ut_free((void *)blk_metas_unalign);
 				*success = FALSE;
 				os_file_close(bkp_fd);
 				os_file_delete(innodb_file_data_key, bkp_file_path);
@@ -321,7 +325,12 @@ fc_backup(
 				return 0;
 			}
 
-			ut_free((void *)blk_metas);
+#ifdef UNIV_FLASH_CACHE_TRACE
+			ut_print_timestamp(stderr);
+			fprintf(stderr, " InnoDB: L2 Cache backup:write blk metadata %d\n", (int)blk_metas_size);
+#endif			
+
+			ut_free((void *)blk_metas_unalign);
 
 			/* last write backup info header to backup file */
 			bkp_info->bkp_blk_count = n_backup_pages;
