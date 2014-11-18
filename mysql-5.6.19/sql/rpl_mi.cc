@@ -512,30 +512,31 @@ bool Master_info::write_info(Rpl_info_handler *to)
      contents of file). But because of number of lines in the first line
      of file we don't care about this garbage.
   */
-  if (to->prepare_info_for_write() ||
-      to->set_info((int) LINES_IN_MASTER_INFO) ||
-      to->set_info(master_log_name) ||
-      to->set_info((ulong) master_log_pos) ||
-      to->set_info(host) ||
-      to->set_info(user) ||
-      to->set_info(password) ||
-      to->set_info((int) port) ||
-      to->set_info((int) connect_retry) ||
-      to->set_info((int) ssl) ||
-      to->set_info(ssl_ca) ||
-      to->set_info(ssl_capath) ||
-      to->set_info(ssl_cert) ||
-      to->set_info(ssl_cipher) ||
-      to->set_info(ssl_key) ||
-      to->set_info((int) ssl_verify_server_cert) ||
-      to->set_info(heartbeat_period) ||
-      to->set_info(bind_addr) ||
-      to->set_info(ignore_server_ids) ||
-      to->set_info(master_uuid) ||
-      to->set_info(retry_count) ||
-      to->set_info(ssl_crl) ||
-      to->set_info(ssl_crlpath) ||
-      to->set_info((int) auto_position))
+      to->set_lines_in_master_info((int) LINES_IN_MASTER_INFO);
+      to->set_master_log_name(master_log_name);
+      to->set_master_log_pos((ulong) master_log_pos);
+      to->set_host(host);
+      to->set_user(user);
+      to->set_password(password);
+      to->set_port((int) port);
+      to->set_connect_retry((int) connect_retry);
+      to->set_ssl((int) ssl);
+      to->set_ssl_ca(ssl_ca);
+      to->set_ssl_capath(ssl_capath);
+      to->set_ssl_cert(ssl_cert);
+      to->set_ssl_cipher(ssl_cipher);
+      to->set_ssl_key(ssl_key);
+      to->set_ssl_verify_server_cert((int) ssl_verify_server_cert);
+      to->set_heartbeat_period(heartbeat_period);
+      to->set_bind_addr(bind_addr);
+      to->set_ignore_server_ids(ignore_server_ids);
+      to->set_master_uuid(master_uuid);
+      to->set_retry_count(retry_count);
+      to->set_ssl_crl(ssl_crl);
+      to->set_ssl_crlpath(ssl_crlpath);
+      to->set_auto_position((int) auto_position);
+
+  if (to->do_info_write())
     DBUG_RETURN(TRUE);
 
   DBUG_RETURN(FALSE);

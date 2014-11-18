@@ -60,6 +60,7 @@
 #include "table_cache.h"                        // Table_cache_manager
 #include "my_aes.h" // my_aes_opmode_names
 #include "sql_statistics.h"
+#include "threadpool.h"
 
 #include "log_event.h"
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
@@ -68,6 +69,7 @@
 
 TYPELIB bool_typelib={ array_elements(bool_values)-1, "", bool_values, 0 };
 
+#define MAX_CONNECTIONS 100000
 /*
   This forward declaration is needed because including sql_base.h
   causes further includes.  [TODO] Eliminate this forward declaration
@@ -573,6 +575,11 @@ static Sys_var_charptr Sys_my_bind_addr(
        "bind_address", "IP address to bind to.",
        READ_ONLY GLOBAL_VAR(my_bind_addr_str), CMD_LINE(REQUIRED_ARG),
        IN_FS_CHARSET, DEFAULT(MY_BIND_ALL_ADDRESSES));
+
+static Sys_var_mybool Sys_prepare_optimize(
+       "prepare_optimize","prepare stage flush less time disk",
+       GLOBAL_VAR(prepare_optimize),
+       CMD_LINE(OPT_ARG), DEFAULT(FALSE));
 
 static bool fix_binlog_cache_size(sys_var *self, THD *thd, enum_var_type type)
 {
@@ -1494,6 +1501,15 @@ static Sys_var_mybool Sys_locked_in_memory(
        READ_ONLY GLOBAL_VAR(locked_in_memory), NO_CMD_LINE, DEFAULT(FALSE));
 #endif
 
+/**
+  Used for recording user and ip in binary log
+**/
+static Sys_var_mybool Sys_binlog_user_ip(
+       "binlog_user_ip",
+       "Record user and ip of a statement in binlog",
+       READ_ONLY GLOBAL_VAR(opt_binlog_user_ip),
+       CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+
 /* this says NO_CMD_LINE, as command-line option takes a string, not a bool */
 static Sys_var_mybool Sys_log_bin(
        "log_bin", "Whether the binary log is enabled",
@@ -1788,6 +1804,19 @@ static Sys_var_ulong Sys_max_connect_errors(
        GLOBAL_VAR(max_connect_errors), CMD_LINE(REQUIRED_ARG),
        VALID_RANGE(1, ULONG_MAX), DEFAULT(100),
        BLOCK_SIZE(1));
+
+static Sys_var_uint Sys_extra_port(
+       "extra_port",
+       "Extra port number to use for tcp connections in a "
+       "one-thread-per-connection manner. 0 means don't use another port",
+       READ_ONLY GLOBAL_VAR(mysqld_extra_port), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(0, UINT_MAX32), DEFAULT(0), BLOCK_SIZE(1));
+
+static Sys_var_ulong Sys_extra_max_connections(
+       "extra_max_connections", "The number of connections on extra-port",
+       GLOBAL_VAR(extra_max_connections), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(1, MAX_CONNECTIONS), DEFAULT(1), BLOCK_SIZE(1), NO_MUTEX_GUARD,
+       NOT_IN_BINLOG, ON_CHECK(0), ON_UPDATE(fix_max_connections));
 
 static bool check_max_delayed_threads(sys_var *self, THD *thd, set_var *var)
 {
@@ -2493,12 +2522,26 @@ static Sys_var_ulong Sys_trans_prealloc_size(
 static const char *thread_handling_names[]=
 {
   "one-thread-per-connection", "no-threads", "loaded-dynamically",
+#ifdef HAVE_POOL_OF_THREADS
+  "pool-of-threads",
+#endif
   0
 };
+
+#if defined (_WIN32) && defined (HAVE_POOL_OF_THREADS)
+/* Windows is using OS threadpool, so we're pretty sure it works well */
+#define DEFAULT_THREAD_HANDLING 2
+#else
+#define DEFAULT_THREAD_HANDLING 0
+#endif
+
 static Sys_var_enum Sys_thread_handling(
        "thread_handling",
        "Define threads usage for handling queries, one of "
        "one-thread-per-connection, no-threads, loaded-dynamically"
+#ifdef HAVE_POOL_OF_THREADS
+       ", pool-of-threads"
+#endif
        , READ_ONLY GLOBAL_VAR(thread_handling), CMD_LINE(REQUIRED_ARG),
        thread_handling_names, DEFAULT(0));
 
@@ -3032,6 +3075,118 @@ static Sys_var_ulong Sys_thread_cache_size(
        GLOBAL_VAR(max_blocked_pthreads),
        CMD_LINE(REQUIRED_ARG, OPT_THREAD_CACHE_SIZE),
        VALID_RANGE(0, 16384), DEFAULT(0), BLOCK_SIZE(1));
+
+#ifdef HAVE_POOL_OF_THREADS
+
+static bool fix_tp_max_threads(sys_var *, THD *, enum_var_type)
+{
+#ifdef _WIN32
+  tp_set_max_threads(threadpool_max_threads);
+#endif
+  return false;
+}
+
+
+#ifdef _WIN32
+static bool fix_tp_min_threads(sys_var *, THD *, enum_var_type)
+{
+  tp_set_min_threads(threadpool_min_threads);
+  return false;
+}
+#endif
+
+
+#ifndef  _WIN32
+static bool fix_threadpool_size(sys_var*, THD*, enum_var_type)
+{
+  tp_set_threadpool_size(threadpool_size);
+  return false;
+}
+
+
+static bool fix_threadpool_stall_limit(sys_var*, THD*, enum_var_type)
+{
+  tp_set_threadpool_stall_limit(threadpool_stall_limit);
+  return false;
+}
+#endif
+
+#ifdef _WIN32
+static Sys_var_uint Sys_threadpool_min_threads(
+  "thread_pool_min_threads",
+  "Minimum number of threads in the thread pool.",
+  GLOBAL_VAR(threadpool_min_threads), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(1, 256), DEFAULT(1), BLOCK_SIZE(1),
+  NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+  ON_UPDATE(fix_tp_min_threads)
+  );
+#else
+static Sys_var_uint Sys_threadpool_idle_thread_timeout(
+  "thread_pool_idle_timeout",
+  "Timeout in seconds for an idle thread in the thread pool."
+  "Worker thread will be shut down after timeout",
+  GLOBAL_VAR(threadpool_idle_timeout), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(1, UINT_MAX), DEFAULT(60), BLOCK_SIZE(1)
+);
+static Sys_var_uint Sys_threadpool_oversubscribe(
+  "thread_pool_oversubscribe",
+  "How many additional active worker threads in a group are allowed.",
+  GLOBAL_VAR(threadpool_oversubscribe), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(1, 1000), DEFAULT(3), BLOCK_SIZE(1)
+);
+static Sys_var_uint Sys_threadpool_size(
+ "thread_pool_size",
+ "Number of thread groups in the pool. "
+ "This parameter is roughly equivalent to maximum number of concurrently "
+ "executing threads (threads in a waiting state do not count as executing).",
+  GLOBAL_VAR(threadpool_size), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(1, MAX_THREAD_GROUPS), DEFAULT(my_getncpus()), BLOCK_SIZE(1),
+  NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
+  ON_UPDATE(fix_threadpool_size)
+);
+static Sys_var_uint Sys_threadpool_stall_limit(
+ "thread_pool_stall_limit",
+ "Maximum query execution time in milliseconds,"
+ "before an executing non-yielding thread is considered stalled."
+ "If a worker thread is stalled, additional worker thread "
+ "may be created to handle remaining clients.",
+  GLOBAL_VAR(threadpool_stall_limit), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(10, UINT_MAX), DEFAULT(500), BLOCK_SIZE(1),
+  NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0), 
+  ON_UPDATE(fix_threadpool_stall_limit)
+);
+static Sys_var_uint Sys_threadpool_high_prio_tickets(
+  "thread_pool_high_prio_tickets",
+  "Number of tickets to enter the high priority event queue for each "
+  "transaction.",
+  SESSION_VAR(threadpool_high_prio_tickets), CMD_LINE(REQUIRED_ARG),
+  VALID_RANGE(0, UINT_MAX), DEFAULT(UINT_MAX), BLOCK_SIZE(1)
+);
+
+static Sys_var_enum Sys_threadpool_high_prio_mode(
+  "thread_pool_high_prio_mode",
+  "High priority queue mode: one of 'transactions', 'statements' or 'none'. "
+  "In the 'transactions' mode the thread pool uses both high- and low-priority "
+  "queues depending on whether an event is generated by an already started "
+  "transaction and whether it has any high priority tickets (see "
+  "thread_pool_high_prio_tickets). In the 'statements' mode all events (i.e. "
+  "individual statements) always go to the high priority queue, regardless of "
+  "the current transaction state and high priority tickets. "
+  "'none' is the opposite of 'statements', i.e. disables the high priority queue "
+  "completely.",
+  SESSION_VAR(threadpool_high_prio_mode), CMD_LINE(REQUIRED_ARG),
+  threadpool_high_prio_mode_names, DEFAULT(TP_HIGH_PRIO_MODE_TRANSACTIONS));
+
+#endif /* !WIN32 */
+static Sys_var_uint Sys_threadpool_max_threads(
+  "thread_pool_max_threads",
+  "Maximum allowed number of worker threads in the thread pool",
+   GLOBAL_VAR(threadpool_max_threads), CMD_LINE(REQUIRED_ARG),
+   VALID_RANGE(1, MAX_CONNECTIONS), DEFAULT(MAX_CONNECTIONS), BLOCK_SIZE(1),
+   NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0), 
+   ON_UPDATE(fix_tp_max_threads)
+);
+#endif /* HAVE_POOL_OF_THREADS */
 
 /**
   Can't change the 'next' tx_isolation if we are already in a
@@ -4158,7 +4313,7 @@ static Sys_var_uint Sys_sync_relaylog_period(
        "sync_relay_log", "Synchronously flush relay log to disk after "
        "every #th event. Use 0 to disable synchronous flushing",
        GLOBAL_VAR(sync_relaylog_period), CMD_LINE(REQUIRED_ARG),
-       VALID_RANGE(0, UINT_MAX), DEFAULT(10000), BLOCK_SIZE(1));
+       VALID_RANGE(0, UINT_MAX), DEFAULT(0), BLOCK_SIZE(1));
 
 static Sys_var_uint Sys_sync_relayloginfo_period(
        "sync_relay_log_info", "Synchronously flush relay log info "
@@ -4201,7 +4356,7 @@ static Sys_var_uint Sys_sync_masterinfo_period(
        "sync_master_info", "Synchronously flush master info to disk "
        "after every #th event. Use 0 to disable synchronous flushing",
        GLOBAL_VAR(sync_masterinfo_period), CMD_LINE(REQUIRED_ARG),
-       VALID_RANGE(0, UINT_MAX), DEFAULT(10000), BLOCK_SIZE(1));
+       VALID_RANGE(0, UINT_MAX), DEFAULT(0), BLOCK_SIZE(1));
 
 #ifdef HAVE_REPLICATION
 static Sys_var_ulong Sys_slave_trans_retries(
@@ -4424,6 +4579,30 @@ static Sys_var_mybool Sys_pseudo_slave_mode(
        SESSION_ONLY(pseudo_slave_mode), NO_CMD_LINE, DEFAULT(FALSE),
        NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(check_pseudo_slave_mode));
 
+
+static Sys_var_charptr Sys_ha_partner_host(
+       "ha_partner_host",
+       "vsr ha suite partner's host ",
+       READ_ONLY GLOBAL_VAR(ha_partner_host),
+       CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT(0));
+
+static Sys_var_uint Sys_ha_partner_port(
+       "ha_partner_port", 
+       "vsr ha suite partner's port ",
+       GLOBAL_VAR(ha_partner_port), CMD_LINE(REQUIRED_ARG),
+       VALID_RANGE(0, UINT_MAX), DEFAULT(0), BLOCK_SIZE(1));
+
+static Sys_var_charptr Sys_ha_partner_user(
+       "ha_partner_user",
+       "vsr ha suite partner's user ",
+       READ_ONLY GLOBAL_VAR(ha_partner_user),
+       CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT(0));
+
+static Sys_var_charptr Sys_ha_partner_password(
+       "ha_partner_password",
+       "vsr ha suite partner's password ",
+       READ_ONLY GLOBAL_VAR(ha_partner_password),
+       CMD_LINE(REQUIRED_ARG), IN_FS_CHARSET, DEFAULT(0));
 
 #ifdef HAVE_REPLICATION
 static bool check_gtid_next(sys_var *self, THD *thd, set_var *var)

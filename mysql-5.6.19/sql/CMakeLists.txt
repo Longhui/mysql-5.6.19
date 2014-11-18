@@ -193,7 +193,14 @@ SET(SQL_SOURCE
   events.cc
   mysqld.cc
   sql_client.cc
+  threadpool_common.cc
   )
+
+IF(WIN32)
+  SET(SQL_SOURCE ${SQL_SOURCE} threadpool_win.cc)
+ELSE()
+ SET(SQL_SOURCE ${SQL_SOURCE} threadpool_unix.cc)
+ENDIF()
 
 IF (WIN32 AND OPENSSL_APPLINK_C)
   SET_SOURCE_FILES_PROPERTIES(

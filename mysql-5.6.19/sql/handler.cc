@@ -1439,7 +1439,13 @@ int ha_commit_trans(THD *thd, bool all, bool ignore_global_read_lock)
     }
 
     if (!trans->no_2pc && (rw_ha_count > 1))
+    {
+      if ( prepare_optimize && opt_bin_log )
+       thd->durability_property= HA_IGNORE_DURABILITY;
+
       error= tc_log->prepare(thd, all);
+      thd->durability_property= HA_REGULAR_DURABILITY;
+    }
   }
   if (error || (error= tc_log->commit(thd, all)))
   {

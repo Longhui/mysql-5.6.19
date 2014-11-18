@@ -14,14 +14,14 @@
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
 
 SET(SEMISYNC_MASTER_SOURCES  
- semisync.cc semisync_master.cc semisync_master_plugin.cc
- semisync.h semisync_master.h)
+ semisync.cc semisync_master.cc semisync_vsr.cc semisync_master_plugin.cc
+ semisync.h semisync_master.h semisync_vsr.h semisync_master_ack_receiver.cc)
 
 MYSQL_ADD_PLUGIN(semisync_master ${SEMISYNC_MASTER_SOURCES}  
   MODULE_ONLY MODULE_OUTPUT_NAME "semisync_master")
 
-SET(SEMISYNC_SLAVE_SOURCES  semisync.cc semisync_slave.cc 
-  semisync_slave_plugin.cc semisync.h semisync_slave.h )
+SET(SEMISYNC_SLAVE_SOURCES  semisync.cc semisync_slave.cc semisync_vsr.cc
+  semisync_slave_plugin.cc semisync.h semisync_slave.h semisync_vsr.h)
 MYSQL_ADD_PLUGIN(semisync_slave ${SEMISYNC_SLAVE_SOURCES} 
   MODULE_ONLY MODULE_OUTPUT_NAME "semisync_slave")
 

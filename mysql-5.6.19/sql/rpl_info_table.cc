@@ -541,6 +541,36 @@ int Rpl_info_table::do_prepare_info_for_write()
   return(do_prepare_info_for_read());
 }
 
+int Rpl_info_table::do_info_write()
+{
+  if (prepare_info_for_write() ||
+    set_info((int) lines_in_master_info) ||
+    set_info(master_log_name) ||
+    set_info((ulong) master_log_pos) ||
+    set_info(host) ||
+    set_info(user) ||
+    set_info(password) ||
+    set_info((int) port) ||
+    set_info((int) connect_retry) ||
+    set_info((int) ssl) ||
+    set_info(ssl_ca) ||
+    set_info(ssl_capath) ||
+    set_info(ssl_cert) ||
+    set_info(ssl_cipher) ||
+    set_info(ssl_key) ||
+    set_info((int) ssl_verify_server_cert) ||
+    set_info(heartbeat_period) ||
+    set_info(bind_addr) ||
+    set_info(ignore_server_ids) ||
+    set_info(master_uuid) ||
+    set_info(retry_count) ||
+    set_info(ssl_crl) ||
+    set_info(ssl_crlpath) ||
+    set_info((int) auto_position))
+  return TRUE; 
+}
+
+
 uint Rpl_info_table::do_get_rpl_info_type()
 {
   return INFO_REPOSITORY_TABLE;

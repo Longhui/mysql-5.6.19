@@ -3799,19 +3799,75 @@ bool Query_log_event::write(IO_CACHE* file)
   int2store(buf + Q_STATUS_VARS_LEN_OFFSET, status_vars_len);
 
   /*
+   add user and ip into query event
+  */
+  ulong user_len = 0;
+  if(0 != thd->security_ctx->user)
+  {
+      user_len = strlen(thd->security_ctx->user);
+  }
+  ulong ip_host_len = 0;
+  String* ip_host = 0;
+  if(thd->security_ctx->get_ip())
+  {
+      ip_host_len = (thd->security_ctx->get_ip())->length();
+      ip_host = thd->security_ctx->get_ip();
+  }
+  if( !ip_host_len && thd->security_ctx->get_host())
+  {
+      ip_host_len = (thd->security_ctx->get_host())->length();
+      ip_host = thd->security_ctx->get_host();
+  }
+  else
+  {
+      ip_host_len=strlen("unknow");
+  }
+
+  /*
     Calculate length of whole event
     The "1" below is the \0 in the db's length
   */
   event_length= (uint) (start-buf) + get_post_header_size_for_derived() + db_len + 1 + q_len;
+  if(opt_binlog_user_ip)
+  {
+   event_length += 5 + user_len + ip_host_len;
+  }
+  bool rflag = 0;
 
-  return (write_header(file, event_length) ||
+  rflag = (write_header(file, event_length) ||
           wrapper_my_b_safe_write(file, (uchar*) buf, QUERY_HEADER_LEN) ||
           write_post_header_for_derived(file) ||
           wrapper_my_b_safe_write(file, (uchar*) start_of_status,
                           (uint) (start-start_of_status)) ||
-          wrapper_my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1) ||
-          wrapper_my_b_safe_write(file, (uchar*) query, q_len) ||
-	  write_footer(file)) ? 1 : 0;
+          wrapper_my_b_safe_write(file, (db) ? (uchar*) db : (uchar*)"", db_len + 1));
+
+  if(!opt_binlog_user_ip)
+  {
+   /*
+    don't need to record user and ip in binary log
+   */
+    rflag = rflag || wrapper_my_b_safe_write(file, (uchar*) query, q_len)
+            || write_footer(file) ? 1 : 0;
+  }
+  else
+  {
+    /*
+     add user and ip into query event
+    */
+    uchar *query_tmp = (uchar*)my_malloc(q_len + 1, MYF(MY_WME));
+    memmove(query_tmp, query, q_len);
+    query_tmp[q_len] = 0;
+    rflag = rflag || wrapper_my_b_safe_write(file, (uchar*) query_tmp, q_len);
+    my_free(query_tmp);
+    rflag = rflag || (wrapper_my_b_safe_write(file, (uchar*) "/*", 2) ||
+          wrapper_my_b_safe_write(file, (uchar*) thd->security_ctx->user, user_len) ||
+          wrapper_my_b_safe_write(file, (uchar*) "@", 1) ||
+          wrapper_my_b_safe_write(file, reinterpret_cast<const uchar*>(ip_host!=0? ip_host->ptr():"unknow"), 
+                             ip_host_len) 
+          || wrapper_my_b_safe_write(file, (uchar*) "*/", 2))
+          || write_footer(file) ? 1 : 0;
+  }
+  return (rflag ? 1 : 0);
 }
 
 /**

@@ -85,6 +85,7 @@ static void vio_init(Vio *vio, enum enum_vio_type type,
     vio->should_retry	=vio_should_retry;
     vio->was_timeout    =vio_was_timeout;
     vio->vioshutdown	=vio_shutdown_pipe;
+    vio->viocancel      =vio_cancel_pipe;
     vio->peer_addr	=vio_peer_addr;
     vio->io_wait        =no_io_wait;
     vio->is_connected   =vio_is_connected_pipe;
@@ -104,6 +105,7 @@ static void vio_init(Vio *vio, enum enum_vio_type type,
     vio->should_retry	=vio_should_retry;
     vio->was_timeout    =vio_was_timeout;
     vio->vioshutdown	=vio_shutdown_shared_memory;
+    vio->viocancel      =vio_cancel_shared_memory;
     vio->peer_addr	=vio_peer_addr;
     vio->io_wait        =no_io_wait;
     vio->is_connected   =vio_is_connected_shared_memory;
@@ -123,6 +125,7 @@ static void vio_init(Vio *vio, enum enum_vio_type type,
     vio->should_retry	=vio_should_retry;
     vio->was_timeout    =vio_was_timeout;
     vio->vioshutdown	=vio_ssl_shutdown;
+    vio->viocancel      =vio_cancel;
     vio->peer_addr	=vio_peer_addr;
     vio->io_wait        =vio_io_wait;
     vio->is_connected   =vio_is_connected;
@@ -140,6 +143,7 @@ static void vio_init(Vio *vio, enum enum_vio_type type,
   vio->should_retry     =vio_should_retry;
   vio->was_timeout      =vio_was_timeout;
   vio->vioshutdown      =vio_shutdown;
+  vio->viocancel      =vio_cancel;
   vio->peer_addr        =vio_peer_addr;
   vio->io_wait          =vio_io_wait;
   vio->is_connected     =vio_is_connected;

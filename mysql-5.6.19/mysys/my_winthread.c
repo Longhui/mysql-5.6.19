@@ -96,6 +96,23 @@ error_return:
   DBUG_RETURN(error_no);
 }
 
+/**
+   Get thread HANDLE.
+   @param thread      reference to pthread object
+   @return int
+     @retval !NULL    valid thread handle
+     @retval NULL     failure
+
+*/
+HANDLE pthread_get_handle(pthread_t thread_id)
+{
+  HANDLE handle;
+
+  handle= OpenThread(SYNCHRONIZE, FALSE, thread_id);
+  if (!handle)
+    my_osmaperr(GetLastError());
+  return handle;
+}
 
 void pthread_exit(void *a)
 {
@@ -129,6 +146,51 @@ error_return:
   if(handle)
     CloseHandle(handle);
   return -1;
+}
+
+/**
+  Join thread.
+  This function provides combined implementation for
+  pthread_join() and pthread_join_with_handle() functions.
+
+  @param thread      reference to pthread object
+  @param handle      thread handle of thread to be joined
+  @return int
+    @retval 0 success
+    @retval 1 failure
+
+*/
+int pthread_join_base(pthread_t thread, HANDLE handle)
+{
+  DWORD  ret;
+  if (!handle)
+  {
+     handle= OpenThread(SYNCHRONIZE, FALSE, thread);
+     if (!handle)
+     {
+       my_osmaperr(GetLastError());
+       goto error_return;
+     }
+  }
+  ret= WaitForSingleObject(handle, INFINITE);
+  if(ret != WAIT_OBJECT_0)
+  {
+    my_osmaperr(GetLastError());
+    goto error_return;
+  }
+  CloseHandle(handle);
+  return 0;
+
+error_return:
+  if(handle)
+    CloseHandle(handle);
+  return 1;
+}
+
+int pthread_join_with_handle(HANDLE handle)
+{
+  pthread_t dummy= 0;
+  return pthread_join_base(dummy, handle);
 }
 
 int pthread_cancel(pthread_t thread)

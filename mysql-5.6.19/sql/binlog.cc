@@ -891,6 +891,22 @@ binlog_trans_log_savepos(THD *thd, my_off_t *pos)
   DBUG_VOID_RETURN;
 }
 
+int binlog_rollback_append(IO_CACHE *log)
+{
+  THD *thd;
+  thd= current_thd;
+  if (NULL == thd)
+  {
+    thd =new THD;
+  }
+  Query_log_event evt(thd, STRING_WITH_LEN("ROLLBACK"),
+                          TRUE, FALSE, TRUE, 0);
+  if (NULL == current_thd)
+  {
+    delete thd;
+  }
+  return evt.write(log);
+}
 
 /*
   this function is mostly a placeholder.
@@ -1488,8 +1504,12 @@ Stage_manager::Mutex_queue::append(THD *first)
     moderately short. If they are not, we need to track the end of
     the queue as well.
   */
+  m_length++;
   while (first->next_to_commit)
+  {
+    m_length++;
     first= first->next_to_commit;
+  }
   m_last= &first->next_to_commit;
   DBUG_PRINT("info", ("m_first: 0x%llx, &m_first: 0x%llx, m_last: 0x%llx",
                         (ulonglong) m_first, (ulonglong) &m_first,
@@ -1506,6 +1526,7 @@ Stage_manager::Mutex_queue::pop_front()
 {
   DBUG_ENTER("Stage_manager::Mutex_queue::pop_front");
   lock();
+  m_length--;
   THD *result= m_first;
   bool more= true;
   /*
@@ -1574,6 +1595,7 @@ THD *Stage_manager::Mutex_queue::fetch_and_empty()
 {
   DBUG_ENTER("Stage_manager::Mutex_queue::fetch_and_empty");
   lock();
+  m_length=0;
   DBUG_PRINT("enter", ("m_first: 0x%llx, &m_first: 0x%llx, m_last: 0x%llx",
                        (ulonglong) m_first, (ulonglong) &m_first,
                        (ulonglong) m_last));
@@ -2529,6 +2551,7 @@ MYSQL_BIN_LOG::MYSQL_BIN_LOG(uint *sync_period)
    relay_log_checksum_alg(BINLOG_CHECKSUM_ALG_UNDEF),
    previous_gtid_set(0)
 {
+  init_endpoint();
   /*
     We don't want to initialize locks here as such initialization depends on
     safe_mutex (when using safe_mutex) which depends on MY_INIT(), which is
@@ -2549,6 +2572,7 @@ void MYSQL_BIN_LOG::cleanup()
   DBUG_ENTER("cleanup");
   if (inited)
   {
+    destroy_endpoint();
     inited= 0;
     close(LOG_CLOSE_INDEX|LOG_CLOSE_STOP_EVENT);
     mysql_mutex_destroy(&LOCK_log);
@@ -2572,6 +2596,7 @@ void MYSQL_BIN_LOG::init_pthread_objects()
   mysql_mutex_init(m_key_LOCK_commit, &LOCK_commit, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(m_key_LOCK_sync, &LOCK_sync, MY_MUTEX_INIT_FAST);
   mysql_mutex_init(m_key_LOCK_xids, &LOCK_xids, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(m_key_LOCK_rotate, &LOCK_rotate, MY_MUTEX_INIT_FAST);
   mysql_cond_init(m_key_update_cond, &update_cond, 0);
   my_atomic_rwlock_init(&m_prep_xids_lock);
   mysql_cond_init(m_key_prep_xids_cond, &m_prep_xids_cond, NULL);
@@ -4833,6 +4858,15 @@ int MYSQL_BIN_LOG::new_file_impl(bool need_lock_log, Format_description_log_even
     mysql_mutex_assert_owner(&LOCK_log);
   DBUG_EXECUTE_IF("semi_sync_3-way_deadlock",
                   DEBUG_SYNC(current_thd, "before_rotate_binlog"););
+  /*
+   @raolh
+   there is a deadlock bug describled in INNOSQL-249
+   so unlock LOCK_log
+  */
+  if (!need_lock_log)
+  {
+    mysql_mutex_unlock(&LOCK_log);
+  }
   mysql_mutex_lock(&LOCK_xids);
   /*
     We need to ensure that the number of prepared XIDs are 0.
@@ -4843,9 +4877,14 @@ int MYSQL_BIN_LOG::new_file_impl(bool need_lock_log, Format_description_log_even
       written to the binary log.
    */
   while (get_prep_xids() > 0)
+  {
     mysql_cond_wait(&m_prep_xids_cond, &LOCK_xids);
+  }
   mysql_mutex_unlock(&LOCK_xids);
-
+  if (!need_lock_log)
+  {
+    mysql_mutex_lock(&LOCK_log);
+  }
   mysql_mutex_lock(&LOCK_index);
 
   if (DBUG_EVALUATE_IF("expire_logs_always", 0, 1)
@@ -6162,6 +6201,7 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
       goto err;
     }
 
+	VSR_BEFORE_RECOVER(log_name + dirname_length(log_name));
     if ((file= open_binlog_file(&log, log_name, &errmsg)) < 0)
     {
       sql_print_error("%s", errmsg);
@@ -6501,9 +6541,9 @@ MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
   mysql_mutex_assert_owner(&LOCK_log);
 
   my_atomic_rwlock_rdlock(&opt_binlog_max_flush_queue_time_lock);
-  const ulonglong max_udelay= my_atomic_load32(&opt_binlog_max_flush_queue_time);
+  //const ulonglong max_udelay= my_atomic_load32(&opt_binlog_max_flush_queue_time);
   my_atomic_rwlock_rdunlock(&opt_binlog_max_flush_queue_time_lock);
-  const ulonglong start_utime= max_udelay > 0 ? my_micro_time() : 0;
+//  const ulonglong start_utime= max_udelay > 0 ? my_micro_time() : 0;
 
   /*
     First we read the queue until it either is empty or the difference
@@ -6514,6 +6554,7 @@ MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
    */
   bool has_more= true;
   THD *first_seen= NULL;
+ /*
   while ((max_udelay == 0 || my_micro_time() < start_utime + max_udelay) && has_more)
   {
     std::pair<bool,THD*> current= stage_manager.pop_front(Stage_manager::FLUSH_STAGE);
@@ -6524,7 +6565,7 @@ MYSQL_BIN_LOG::process_flush_stage_queue(my_off_t *total_bytes_var,
       flush_error= result.first;
     if (first_seen == NULL)
       first_seen= current.second;
-  }
+  } */
 
   /*
     Either the queue is empty, or we ran out of time. If we ran out of
@@ -6713,7 +6754,27 @@ MYSQL_BIN_LOG::change_stage(THD *thd,
     DBUG_ASSERT(!thd_get_cache_mngr(thd)->dbug_any_finalized());
     DBUG_RETURN(true);
   }
+
+//if (Stage_manager::FLUSH_STAGE == stage)
+// fprintf(stderr, "flush_stage_leader: %x\n",thd);
+
+//if (Stage_manager::COMMIT_STAGE == stage)
+//  fprintf(stderr, "commit_stage_leader: %x\n",thd);
+
+  /*
+    @raolh
+	int enter_ordered_commit function, leader would access a mutex(LOCK_ordered_commit) in semisync_master module, whick protact VSR safe.
+
+	VSR: There will be deadlock without LOCK_ordered_commit. The deadlock happen like this:
+	thread 1 hold LOCK_commit and wait for sync with slave (dump thread send binglog to slave)
+	thread 2 hold LOCK_log and wait for LOCK_commit
+	thread 3 (dump thread) recive signal of binlog update from thread 1, and wait for LOCK_log to 
+	weakup from LOCK_cond wait.
+  */
+  RUN_HOOK(binlog_storage, enter_ordered_commit, (thd, Stage_manager::FLUSH_STAGE == stage));
+
   mysql_mutex_lock(enter_mutex);
+
   DBUG_RETURN(false);
 }
 
@@ -6733,6 +6794,9 @@ MYSQL_BIN_LOG::flush_cache_to_file(my_off_t *end_pos_var)
   if (flush_io_cache(&log_file))
     return ER_ERROR_ON_WRITE;
   *end_pos_var= my_b_tell(&log_file);
+
+  set_endpoint(log_file_name, *end_pos_var);
+
   return 0;
 }
 
@@ -6918,6 +6982,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
                        YESNO(thd->transaction.flags.pending),
                        thd->commit_error, thd->thread_id));
 
+  commit_number++;
   /*
     Stage #1: flushing transactions to binary log
 
@@ -6932,13 +6997,21 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
                           thd->thread_id, thd->commit_error));
     DBUG_RETURN(finish_commit(thd));
   }
-
+  if (prepare_optimize)
+  {
+    ha_flush_logs(NULL);
+  }
   THD *wait_queue= NULL;
+  THD *commit_queue= NULL;
   flush_error= process_flush_stage_queue(&total_bytes, &do_rotate, &wait_queue);
+
+  commit_group1_number++;
 
   my_off_t flush_end_pos= 0;
   if (flush_error == 0 && total_bytes > 0)
     flush_error= flush_cache_to_file(&flush_end_pos);
+
+//fprintf(stderr, "leader: %x flush binlog\n", thd);
 
   /*
     If the flush finished successfully, we can call the after_flush
@@ -6956,20 +7029,30 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
       sql_print_error("Failed to run 'after_flush' hooks");
       flush_error= ER_ERROR_ON_WRITE;
     }
+	/*
+	  @raolh
+	  VSR need it to sync binlog file just after write it to filesystem
+	*/
+	std::pair<bool, bool> result= sync_binlog_file(false);
+    flush_error= result.first;
 
     signal_update();
     DBUG_EXECUTE_IF("crash_commit_after_log", DBUG_SUICIDE(););
   }
 
   /*
-    Stage #2: Syncing binary log file to disk
+    @raolh
+	Remove sync stage because binlog has been synced in flush stage, which is needed by VSR
   */
+
+/*
+    Stage #2: Syncing binary log file to disk
+
   bool need_LOCK_log= (get_sync_period() == 1);
 
-  /*
     LOCK_log is not released when sync_binlog is 1. It guarantees that the
     events are not be replicated by dump threads before they are synced to disk.
-  */
+
   if (change_stage(thd, Stage_manager::SYNC_STAGE, wait_queue,
                    need_LOCK_log ? NULL : &LOCK_log, &LOCK_sync))
   {
@@ -6987,6 +7070,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
 
   if (need_LOCK_log)
     mysql_mutex_unlock(&LOCK_log);
+*/
 
   /*
     Stage #3: Commit all transactions in order.
@@ -7000,15 +7084,25 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   if (opt_binlog_order_commits)
   {
     if (change_stage(thd, Stage_manager::COMMIT_STAGE,
-                     final_queue, &LOCK_sync, &LOCK_commit))
+                     wait_queue, &LOCK_log, &LOCK_commit))
     {
       DBUG_PRINT("return", ("Thread ID: %lu, commit_error: %d",
                             thd->thread_id, thd->commit_error));
       DBUG_RETURN(finish_commit(thd));
     }
-    THD *commit_queue= stage_manager.fetch_queue_for(Stage_manager::COMMIT_STAGE);
+
+    commit_group2_number++;
+
+    commit_queue= stage_manager.fetch_queue_for(Stage_manager::COMMIT_STAGE);
     DBUG_EXECUTE_IF("semi_sync_3-way_deadlock",
                     DEBUG_SYNC(thd, "before_process_commit_stage_queue"););
+    /*
+      @raolh
+      VSR wait for slave ACK
+    */
+    RUN_HOOK(binlog_storage, after_sync, (thd, true));
+    RUN_HOOK(binlog_storage, leave_ordered_commit, (thd, true));
+
     process_commit_stage_queue(thd, commit_queue);
     mysql_mutex_unlock(&LOCK_commit);
     /*
@@ -7016,13 +7110,13 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
       3-way deadlock among user thread, rotate thread and dump thread.
     */
     process_after_commit_stage_queue(thd, commit_queue);
-    final_queue= commit_queue;
+    wait_queue= commit_queue;
   }
   else
     mysql_mutex_unlock(&LOCK_sync);
 
   /* Commit done so signal all waiting threads */
-  stage_manager.signal_done(final_queue);
+  stage_manager.signal_done(wait_queue);
 
   /*
     Finish the commit before executing a rotate, or run the risk of a
@@ -7047,9 +7141,19 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
 
     DEBUG_SYNC(thd, "ready_to_do_rotation");
     bool check_purge= false;
+    /*
+     @raolh
+     we lock LOCK_rotate here because we will unlock LOCK_log for a while
+     in new_file_imp(...), which is to avoid deadlock describled in INN0SQL-249
+     
+     without locking LOCK_rotate many threads could create new files mean while for
+     LOCK_log is unlocked in new_file_imp(..) for a while
+    */
+    mysql_mutex_lock(&LOCK_rotate);
     mysql_mutex_lock(&LOCK_log);
     int error= rotate(false, &check_purge);
     mysql_mutex_unlock(&LOCK_log);
+    mysql_mutex_unlock(&LOCK_rotate);
 
     if (error)
       thd->commit_error= THD::CE_COMMIT_ERROR;

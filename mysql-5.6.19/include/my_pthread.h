@@ -147,6 +147,26 @@ int my_pthread_once(my_pthread_once_t *once_control,void (*init_routine)(void));
 struct tm *localtime_r(const time_t *timep,struct tm *tmp);
 struct tm *gmtime_r(const time_t *timep,struct tm *tmp);
 
+/**
+  Get thread HANDLE.
+  @param thread      reference to pthread object
+  @return int
+    @retval !NULL    valid thread handle
+    @retval NULL     failure
+*/
+HANDLE pthread_get_handle(pthread_t thread_id);
+
+/**
+  Wait for thread termination.
+
+  @param handle       handle of the thread to wait for
+
+  @return  int
+    @retval 0 success
+    @retval 1 failure
+*/
+int pthread_join_with_handle(HANDLE handle);
+
 void pthread_exit(void *a);
 int pthread_join(pthread_t thread, void **value_ptr);
 int pthread_cancel(pthread_t thread);
@@ -180,7 +200,8 @@ int pthread_cancel(pthread_t thread);
 
 /* Dummy defines for easier code */
 #define pthread_attr_setdetachstate(A,B) pthread_dummy(0)
-#define pthread_attr_setscope(A,B)
+#define pthread_attr_setscope(A,B) pthread_dummy(0)
+
 #define pthread_detach_this_thread()
 #define pthread_condattr_init(A)
 #define pthread_condattr_destroy(A)

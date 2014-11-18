@@ -35,6 +35,7 @@ class Rpl_info_table : public Rpl_info_handler
 
 public:
   virtual ~Rpl_info_table();
+  int do_info_write();
 
 private:
   /**

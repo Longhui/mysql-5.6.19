@@ -33,6 +33,7 @@ public:
   Rpl_info_dummy(const int nparam);
   virtual ~Rpl_info_dummy() { };
 
+  int do_info_write();
 private:
   int do_init_info();
   int do_init_info(uint instance);

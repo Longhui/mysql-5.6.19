@@ -34,7 +34,7 @@ public:
     friend class Stage_manager;
   public:
     Mutex_queue()
-      : m_first(NULL), m_last(&m_first)
+      : m_first(NULL), m_last(&m_first), m_length(0)
     {
     }
 
@@ -69,7 +69,7 @@ public:
   private:
     void lock() { mysql_mutex_lock(&m_lock); }
     void unlock() { mysql_mutex_unlock(&m_lock); }
-
+    uint m_length;
     /**
        Pointer to the first thread in the queue, or NULL if the queue is
        empty.
@@ -235,6 +235,57 @@ private:
 class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
 {
  private:
+  struct file_position{
+    my_off_t file_pos;
+    char file_name[FN_REFLEN];
+    mysql_mutex_t LOCK_endpoint;
+  } end_point;
+
+ public:
+ void init_endpoint()
+ {
+   mysql_mutex_init(NULL, &end_point.LOCK_endpoint, MY_MUTEX_INIT_FAST );
+   end_point.file_pos= 0;
+   end_point.file_name[0]= 0;
+ }
+  
+ void destroy_endpoint()
+ {
+   mysql_mutex_destroy(&end_point.LOCK_endpoint);
+ }
+
+ void set_endpoint(const char*fname, my_off_t fpos)
+ {
+   mysql_mutex_lock(&end_point.LOCK_endpoint);
+   if( !end_point.file_name[0] || end_point.file_pos <= fpos)
+   {
+     strmake(end_point.file_name, fname, sizeof(end_point.file_name) - 1);
+   }
+   end_point.file_pos= fpos;
+   mysql_mutex_unlock(&end_point.LOCK_endpoint);
+ }
+
+ int cmp_endpoint(const char*fname, my_off_t fpos)
+ {
+   bool val= 0;
+   mysql_mutex_lock(&end_point.LOCK_endpoint);
+   int cmp= strcmp(end_point.file_name, fname);
+   if (cmp > 0){
+      val= 1;
+   }else if(cmp <0 ){
+     val= -1;
+   }else if(end_point.file_pos> fpos){
+     val= 1;
+   }else if(end_point.file_pos< fpos){
+     val= -1;
+   }else{
+     val= 0;
+   }
+   mysql_mutex_unlock(&end_point.LOCK_endpoint);
+   return val;
+ }
+
+ private:
 #ifdef HAVE_PSI_INTERFACE
   /** The instrumentation key to use for @ LOCK_index. */
   PSI_mutex_key m_key_LOCK_index;
@@ -249,6 +300,8 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
   PSI_mutex_key m_key_LOCK_commit;
   /** The instrumentation key to use for @ LOCK_sync. */
   PSI_mutex_key m_key_LOCK_sync;
+  /** The instrumentation key to use for @ LOCK_rotate */
+  PSI_mutex_key m_key_LOCK_rotate;
   /** The instrumentation key to use for @ LOCK_xids. */
   PSI_mutex_key m_key_LOCK_xids;
   /** The instrumentation key to use for @ update_cond. */
@@ -265,6 +318,7 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
   mysql_mutex_t LOCK_commit;
   mysql_mutex_t LOCK_sync;
   mysql_mutex_t LOCK_xids;
+  mysql_mutex_t LOCK_rotate;
   mysql_cond_t update_cond;
   ulonglong bytes_written;
   IO_CACHE index_file;

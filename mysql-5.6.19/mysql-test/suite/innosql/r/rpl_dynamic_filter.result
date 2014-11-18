@@ -1,0 +1,20 @@
+include/master-slave.inc
+Warnings:
+Note	####	Sending passwords in plain text without SSL/TLS is extremely insecure.
+Note	####	Storing MySQL user name or password information in the master info repository is not secure and is therefore not recommended. Please consider using the USER and PASSWORD connection options for START SLAVE; see the 'START SLAVE Syntax' in the MySQL Manual for more information.
+[connection master]
+stop slave;
+change master to replicate_do_db="test";
+change master to replicate_do_db="";
+change master to replicate_do_table="test.t1";
+change master to replicate_do_table="";
+change master to replicate_ignore_table="test.t1";
+change master to replicate_ignore_table="";
+change master to replicate_ignore_db="test";
+change master to replicate_ignore_db="";
+change master to replicate_wild_do_table="test.*";
+change master to replicate_wild_do_table="";
+change master to replicate_wild_ignore_table="test.*";
+change master to replicate_wild_ignore_table="";
+start slave;
+include/rpl_end.inc

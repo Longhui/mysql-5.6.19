@@ -23,6 +23,7 @@
 
 #ifdef HAVE_PSI_INTERFACE
 extern PSI_mutex_key key_ss_mutex_LOCK_binlog_;
+extern PSI_mutex_key key_ss_mutex_LOCK_ordered_commit;
 extern PSI_cond_key key_ss_cond_COND_binlog_send_;
 #endif
 
@@ -491,6 +492,10 @@ class ReplSemiSyncMaster
   /* Is the slave servered by the thread requested semi-sync */
   bool is_semi_sync_slave();
 
+  /* It parses a reply packet and call reportReplyBinlog to handle it. */
+  int reportReplyPacket(uint32 server_id, const uchar *packet,
+                        ulong packet_len);
+
   /* In semi-sync replication, reports up to which binlog position we have
    * received replies from the slave indicating that it already get the events
    * or that was skipped in the master.
@@ -614,6 +619,7 @@ class ReplSemiSyncMaster
 /* System and status variables for the master component */
 extern char rpl_semi_sync_master_enabled;
 extern char rpl_semi_sync_master_status;
+extern char _ack_receiver_enabled;
 extern unsigned long rpl_semi_sync_master_clients;
 extern unsigned long rpl_semi_sync_master_timeout;
 extern unsigned long rpl_semi_sync_master_trace_level;
@@ -631,7 +637,11 @@ extern unsigned long long rpl_semi_sync_master_net_wait_num;
 extern unsigned long long rpl_semi_sync_master_trx_wait_num;
 extern unsigned long long rpl_semi_sync_master_net_wait_time;
 extern unsigned long long rpl_semi_sync_master_trx_wait_time;
-
+extern char rpl_semi_sync_master_commit_after_ack;
+extern char rpl_semi_sync_ack_receiver_enabled;
+extern mysql_mutex_t LOCK_ordered_commit;
+extern char rpl_semi_sync_master_keepsyncrepl;
+extern char rpl_semi_sync_master_trysyncrepl;
 /*
   This indicates whether we should keep waiting if no semi-sync slave
   is available.

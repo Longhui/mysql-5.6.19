@@ -1,0 +1,51 @@
+--source include/master-slave.inc
+
+connection slave;
+stop slave;
+
+change master to replicate_do_db="test";
+let $val=query_get_value(show slave status,Replicate_Do_DB,1);
+if ($val != "test")
+{
+  echo replicate_do_db set fail;
+}
+change master to replicate_do_db="";
+change master to replicate_do_table="test.t1";
+let $val=query_get_value(show slave status,Replicate_Do_Table,1);
+if ($val != "test.t1")
+{
+  echo replicate_do_db set fail;
+}
+change master to replicate_do_table="";
+change master to replicate_ignore_table="test.t1";
+let $val=query_get_value(show slave status,Replicate_Ignore_Table,1);
+if ($val != "test.t1")
+{
+  echo replicate_do_db set fail;
+}
+change master to replicate_ignore_table="";
+change master to replicate_ignore_db="test";
+let $val=query_get_value(show slave status,Replicate_Ignore_DB,1);
+if ($val != "test")
+{
+  echo replicate_do_db set fail;
+}
+change master to replicate_ignore_db="";
+change master to replicate_wild_do_table="test.*";
+let $val=query_get_value(show slave status,Replicate_Wild_Do_Table,1);
+if ($val != "test.*")
+{
+  echo replicate_do_db set fail;
+}
+change master to replicate_wild_do_table="";
+change master to replicate_wild_ignore_table="test.*";
+let $val=query_get_value(show slave status,Replicate_Wild_Ignore_Table,1);
+if ($val != "test.*")
+{
+  echo replicate_do_db set fail;
+}
+change master to replicate_wild_ignore_table="";
+start slave;
+
+--source include/rpl_end.inc
+

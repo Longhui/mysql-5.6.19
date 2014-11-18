@@ -78,6 +78,7 @@
 #include "global_threads.h"
 #include "mysqld.h"
 #include "my_default.h"
+#include "threadpool.h"
 #include "sql_statistics.h"
 
 #ifdef WITH_PERFSCHEMA_STORAGE_ENGINE
@@ -386,6 +387,16 @@ LEX_STRING opt_init_connect, opt_init_slave;
 static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 /* Global variables */
+
++/*
++  Used with --binlog-user-ip for recording user and ip in binnry log
++*/
+my_bool opt_binlog_user_ip= 0;
+
+ulong commit_number=0, commit_group1_number=0, commit_group2_number=0;
+
+bool  prepare_optimize;
+
 ulong slow_query_type;
 ulong long_query_io_ulong;
 my_bool opt_slow_io_log;
@@ -507,7 +518,7 @@ TYPELIB gtid_mode_typelib=
 #ifdef HAVE_INITGROUPS
 volatile sig_atomic_t calling_initgroups= 0; /**< Used in SIGSEGV handler. */
 #endif
-uint mysqld_port, test_flags, select_errors, dropping_tables, ha_open_options;
+uint mysqld_port, mysqld_extra_port, test_flags, select_errors, dropping_tables, ha_open_options;
 uint mysqld_port_timeout;
 ulong delay_key_write_options;
 uint protocol_version;
@@ -554,6 +565,7 @@ ulong specialflag=0;
 ulong binlog_cache_use= 0, binlog_cache_disk_use= 0;
 ulong binlog_stmt_cache_use= 0, binlog_stmt_cache_disk_use= 0;
 ulong max_connections, max_connect_errors, super_connections_after_max;
+ulong extra_max_connections;
 ulong rpl_stop_slave_timeout= LONG_TIMEOUT;
 my_bool log_bin_use_v1_row_events= 0;
 bool thread_cache_size_specified= false;
@@ -1161,7 +1173,7 @@ static void charset_error_reporter(enum loglevel level,
 }
 C_MODE_END
 
-static MYSQL_SOCKET unix_sock, ip_sock;
+static MYSQL_SOCKET unix_sock, ip_sock, extra_ip_sock;
 struct rand_struct sql_rand; ///< used by sql_class.cc:THD::THD()
 
 #ifndef EMBEDDED_LIBRARY
@@ -1253,7 +1265,7 @@ struct st_VioSSLFd *ssl_acceptor_fd;
   Number of currently active user connections. The variable is protected by
   LOCK_connection_count.
 */
-uint connection_count= 0;
+uint connection_count= 0, extra_connection_count=0;
 
 /* Function declarations */
 
@@ -1358,6 +1370,12 @@ static void close_connections(void)
       (void) mysql_socket_shutdown(ip_sock, SHUT_RDWR);
       (void) mysql_socket_close(ip_sock);
       ip_sock= MYSQL_INVALID_SOCKET;
+    }
+	if (mysql_socket_getfd(extra_ip_sock) != INVALID_SOCKET)
+    {
+      (void) mysql_socket_shutdown(extra_ip_sock, SHUT_RDWR);
+      (void) mysql_socket_close(extra_ip_sock);
+      extra_ip_sock= MYSQL_INVALID_SOCKET;
     }
   }
 #ifdef _WIN32
@@ -1548,6 +1566,13 @@ static void close_server_sock()
   if (mysql_socket_getfd(tmp_sock) != INVALID_SOCKET)
   {
     ip_sock= MYSQL_INVALID_SOCKET;
+    DBUG_PRINT("info",("calling shutdown on TCP/IP socket"));
+    (void) mysql_socket_shutdown(tmp_sock, SHUT_RDWR);
+  }
+  tmp_sock=extra_ip_sock;
+  if (mysql_socket_getfd(tmp_sock) != INVALID_SOCKET)
+  {
+    extra_ip_sock= MYSQL_INVALID_SOCKET;
     DBUG_PRINT("info",("calling shutdown on TCP/IP socket"));
     (void) mysql_socket_shutdown(tmp_sock, SHUT_RDWR);
   }
@@ -2241,47 +2266,29 @@ static MYSQL_SOCKET create_socket(const struct addrinfo *addrinfo_list,
   return MYSQL_INVALID_SOCKET;
 }
 
-
-static void network_init(void)
-{
-#ifdef HAVE_SYS_UN_H
-  struct sockaddr_un  UNIXaddr;
-#endif
-  int arg;
-  int   ret;
-  uint  waited;
-  uint  this_wait;
-  uint  retry;
-  char port_buf[NI_MAXSERV];
-  DBUG_ENTER("network_init");
-  LINT_INIT(ret);
-
-  if (MYSQL_CALLBACK_ELSE(thread_scheduler, init, (), 0))
-    unireg_abort(1);      /* purecov: inspected */
-
-  set_ports();
-
-  if (report_port == 0)
-  {
-    report_port= mysqld_port;
-  }
-
-#ifndef DBUG_OFF
-  if (!opt_disable_networking)
-    DBUG_ASSERT(report_port != 0);
-#endif
-
-  if (mysqld_port != 0 && !opt_disable_networking && !opt_bootstrap)
-  {
+/**
+   Activate usage of a tcp port
+*/
+static MYSQL_SOCKET activate_tcp_port(uint port) 
+ {
     struct addrinfo *ai;
     struct addrinfo hints;
-
+    int arg;
+    int   ret;
+    uint  waited;
+    uint  this_wait;
+    uint  retry;
+    char port_buf[NI_MAXSERV];
+    DBUG_ENTER("activate_tcp_port");
+    LINT_INIT(ret);
+    
     const char *bind_address_str= NULL;
     const char *ipv6_all_addresses= "::";
     const char *ipv4_all_addresses= "0.0.0.0";
+    MYSQL_SOCKET ip_sock = MYSQL_INVALID_SOCKET;
 
     sql_print_information("Server hostname (bind-address): '%s'; port: %d",
-                          my_bind_addr_str, mysqld_port);
+                          my_bind_addr_str, port);
 
     // Get list of IP-addresses associated with the bind-address.
 
@@ -2290,7 +2297,7 @@ static void network_init(void)
     hints.ai_socktype= SOCK_STREAM;
     hints.ai_family= AF_UNSPEC;
 
-    my_snprintf(port_buf, NI_MAXSERV, "%d", mysqld_port);
+    my_snprintf(port_buf, NI_MAXSERV, "%d", port);
 
     if (strcasecmp(my_bind_addr_str, MY_BIND_ALL_ADDRESSES) == 0)
     {
@@ -2393,8 +2400,8 @@ static void network_init(void)
     }
 
     mysql_socket_set_thread_owner(ip_sock);
-
-#ifndef __WIN__
+    
+    #ifndef __WIN__
     /*
       We should not use SO_REUSEADDR on windows as this would enable a
       user to open two mysqld servers with the same TCP/IP port.
@@ -2459,6 +2466,40 @@ static void network_init(void)
           socket_errno);
       unireg_abort(1);
     }
+    
+    DBUG_RETURN(ip_sock);
+  }
+
+
+static void network_init(void)
+{
+#ifdef HAVE_SYS_UN_H
+  struct sockaddr_un  UNIXaddr;
+#endif
+  int arg;
+  DBUG_ENTER("network_init");
+
+  if (MYSQL_CALLBACK_ELSE(thread_scheduler, init, (), 0))
+    unireg_abort(1);      /* purecov: inspected */
+
+  set_ports();
+
+  if (report_port == 0)
+  {
+    report_port= mysqld_port;
+  }
+
+#ifndef DBUG_OFF
+  if (!opt_disable_networking)
+    DBUG_ASSERT(report_port != 0);
+#endif
+
+   if (!opt_disable_networking && !opt_bootstrap)
+  {
+	if (mysqld_port)
+      ip_sock= activate_tcp_port(mysqld_port);
+    if (mysqld_extra_port)
+      extra_ip_sock= activate_tcp_port(mysqld_extra_port);
   }
 
 #ifdef _WIN32
@@ -2604,7 +2645,7 @@ extern "C" sig_handler end_thread_signal(int sig __attribute__((unused)))
   if (thd && ! thd->bootstrap)
   {
     statistic_increment(killed_threads, &LOCK_status);
-    MYSQL_CALLBACK(thread_scheduler, end_thread, (thd,0)); /* purecov: inspected */
+    MYSQL_CALLBACK(thd->op_scheduler, end_thread, (thd,0)); /* purecov: inspected */
   }
 }
 
@@ -2629,10 +2670,10 @@ void thd_release_resources(THD *thd)
     dec_connection_count()
 */
 
-void dec_connection_count()
+void dec_connection_count(THD *thd)
 {
   mysql_mutex_lock(&LOCK_connection_count);
-  --connection_count;
+  (*thd->op_scheduler->connection_count)--;
   mysql_mutex_unlock(&LOCK_connection_count);
 }
 
@@ -2740,7 +2781,7 @@ bool one_thread_per_connection_end(THD *thd, bool block_pthread)
   DBUG_PRINT("info", ("thd %p block_pthread %d", thd, (int) block_pthread));
 
   thd->release_resources();
-  dec_connection_count();
+  dec_connection_count(thd);
 
   mysql_mutex_lock(&LOCK_thread_count);
   /*
@@ -3434,6 +3475,16 @@ static bool init_global_datetime_format(timestamp_type format_type,
   }
   return false;
 }
+
+#ifdef HAVE_POOL_OF_THREADS
+int show_threadpool_idle_threads(THD *thd, SHOW_VAR *var, char *buff)
+{
+  var->type= SHOW_INT;
+  var->value= buff;
+  *(int *)buff= tp_get_idle_thread_count(); 
+  return 0;
+}
+#endif
 
 SHOW_VAR com_status_vars[]= {
   {"admin_commands",       (char*) offsetof(STATUS_VAR, com_other), SHOW_LONG_STATUS},
@@ -6133,7 +6184,7 @@ void create_thread_to_handle_connection(THD *thd)
   @param[in,out] thd    Thread handle of future thread.
 */
 
-static void create_new_thread(THD *thd)
+void create_new_thread(THD *thd)
 {
   DBUG_ENTER("create_new_thread");
 
@@ -6144,7 +6195,8 @@ static void create_new_thread(THD *thd)
 
   mysql_mutex_lock(&LOCK_connection_count);
 
-  if (connection_count >= max_connections + super_connections_after_max || abort_loop)
+  if (*thd->op_scheduler->connection_count >= 
+      *thd->op_scheduler->max_connections + super_connections_after_max || abort_loop)
   {
     mysql_mutex_unlock(&LOCK_connection_count);
 
@@ -6167,10 +6219,10 @@ static void create_new_thread(THD *thd)
     DBUG_VOID_RETURN;
   }
 
-  ++connection_count;
+  ++*thd->op_scheduler->connection_count;
 
-  if (connection_count > max_used_connections)
-    max_used_connections= connection_count;
+  if (connection_count + extra_connection_count> max_used_connections)
+    max_used_connections= connection_count + extra_connection_count;
 
   mysql_mutex_unlock(&LOCK_connection_count);
 
@@ -6185,7 +6237,7 @@ static void create_new_thread(THD *thd)
   */
   thd->thread_id= thd->variables.pseudo_thread_id= thread_id++;
 
-  MYSQL_CALLBACK(thread_scheduler, add_connection, (thd));
+  MYSQL_CALLBACK(thd->op_scheduler, add_connection, (thd));
 
   DBUG_VOID_RETURN;
 }
@@ -6220,11 +6272,11 @@ void handle_connections_sockets()
   uint error_count=0;
   THD *thd;
   struct sockaddr_storage cAddr;
-  int ip_flags=0,socket_flags=0,flags=0,retval;
+  int ip_flags=0,extra_ip_flags=0,socket_flags=0,flags=0,retval;
   st_vio *vio_tmp;
 #ifdef HAVE_POLL
   int socket_count= 0;
-  struct pollfd fds[2]; // for ip_sock and unix_sock
+  struct pollfd fds[3]; // for ip_sock and unix_sock
   MYSQL_SOCKET pfs_fds[2]; // for performance schema
 #else
   fd_set readFDs,clientFDs;
@@ -6234,6 +6286,7 @@ void handle_connections_sockets()
   DBUG_ENTER("handle_connections_sockets");
 
   (void) ip_flags;
+  (void) extra_ip_flags;
   (void) socket_flags;
 
 #ifndef HAVE_POLL
@@ -6255,6 +6308,23 @@ void handle_connections_sockets()
     ip_flags = fcntl(mysql_socket_getfd(ip_sock), F_GETFL, 0);
 #endif
   }
+  
+  if (mysql_socket_getfd(extra_ip_sock) != INVALID_SOCKET)
+  {
+    mysql_socket_set_thread_owner(extra_ip_sock);
+#ifdef HAVE_POLL
+    fds[socket_count].fd= mysql_socket_getfd(extra_ip_sock);
+    fds[socket_count].events= POLLIN;
+    pfs_fds[socket_count]= extra_ip_sock;
+    socket_count++;
+#else
+    FD_SET(mysql_socket_getfd(extra_ip_sock), &clientFDs);
+#endif
+#ifdef HAVE_FCNTL
+    extra_ip_flags = fcntl(mysql_socket_getfd(extra_ip_sock), F_GETFL, 0);
+#endif
+  }
+  
 #ifdef HAVE_SYS_UN_H
   mysql_socket_set_thread_owner(unix_sock);
 #ifdef HAVE_POLL
@@ -6329,9 +6399,15 @@ void handle_connections_sockets()
     }
     else
 #endif // HAVE_SYS_UN_H
+	 if(FD_ISSET(mysql_socket_getfd(ip_sock), &readFDs))
     {
       sock = ip_sock;
       flags= ip_flags;
+    }
+    else
+    {
+      sock = extra_ip_sock;
+      flags= extra_ip_flags;
     }
 #endif // HAVE_POLL
 
@@ -6384,7 +6460,8 @@ void handle_connections_sockets()
 
 #ifdef HAVE_LIBWRAP
     {
-      if (mysql_socket_getfd(sock) == mysql_socket_getfd(ip_sock))
+      if (mysql_socket_getfd(sock) == mysql_socket_getfd(ip_sock) ||
+  	  mysql_socket_getfd(sock) == mysql_socket_getfd(extra_ip_sock))
       {
         struct request_info req;
         signal(SIGCHLD, SIG_DFL);
@@ -6462,6 +6539,12 @@ void handle_connections_sockets()
     init_net_server_extension(thd);
     if (mysql_socket_getfd(sock) == mysql_socket_getfd(unix_sock))
       thd->security_ctx->set_host((char*) my_localhost);
+
+	if (mysql_socket_getfd(sock) == mysql_socket_getfd(extra_ip_sock))
+    {
+      thd->extra_port= 1;
+      thd->op_scheduler= extra_thread_scheduler;
+    }
 
     create_new_thread(thd);
   }
@@ -7935,6 +8018,11 @@ show_ssl_get_server_not_after(THD *thd, SHOW_VAR *var, char *buff)
 */
 
 SHOW_VAR status_vars[]= {
+  {"commit_number",            (char*) &commit_number  ,        SHOW_LONG},
+  {"commit_group1_number",     (char*) &commit_group1_number,   SHOW_LONG},
+#ifndef DBUG_OFF
+  {"commit_group2_number",     (char*) &commit_group2_number,   SHOW_LONG},
+#endif
   {"Aborted_clients",          (char*) &aborted_threads,        SHOW_LONG},
   {"Aborted_connects",         (char*) &aborted_connects,       SHOW_LONG},
   {"Binlog_cache_disk_use",    (char*) &binlog_cache_disk_use,  SHOW_LONG},
@@ -8073,6 +8161,10 @@ SHOW_VAR status_vars[]= {
   {"Tc_log_max_pages_used",    (char*) &tc_log_max_pages_used,  SHOW_LONG},
   {"Tc_log_page_size",         (char*) &tc_log_page_size,       SHOW_LONG},
   {"Tc_log_page_waits",        (char*) &tc_log_page_waits,      SHOW_LONG},
+#endif
+#ifdef HAVE_POOL_OF_THREADS
+  {"Threadpool_idle_threads",  (char *) &show_threadpool_idle_threads, SHOW_FUNC},
+  {"Threadpool_threads",       (char *) &tp_stats.num_worker_threads, SHOW_INT},
 #endif
   {"Threads_cached",           (char*) &blocked_pthread_count,    SHOW_LONG_NOFLUSH},
   {"Threads_connected",        (char*) &connection_count,       SHOW_INT},
@@ -8275,7 +8367,7 @@ static int mysql_init_variables(void)
 
   opt_specialflag= SPECIAL_ENGLISH;
   unix_sock= MYSQL_INVALID_SOCKET;
-  ip_sock= MYSQL_INVALID_SOCKET;
+  ip_sock= extra_ip_sock=MYSQL_INVALID_SOCKET;
   mysql_home_ptr= mysql_home;
   pidfile_name_ptr= pidfile_name;
   log_error_file_ptr= log_error_file;
@@ -8953,7 +9045,7 @@ static int get_options(int *argc_ptr, char ***argv_ptr)
   }
 
   if (opt_disable_networking)
-    mysqld_port= 0;
+    mysqld_port= mysqld_extra_port= 0;
 
   if (opt_skip_show_db)
     opt_specialflag|= SPECIAL_SKIP_SHOW_DB;
@@ -9033,13 +9125,30 @@ static int get_options(int *argc_ptr, char ***argv_ptr)
     return 1;
 
 #ifdef EMBEDDED_LIBRARY
-  one_thread_scheduler();
+  one_thread_scheduler(thread_scheduler);
+  one_thread_scheduler(extra_thread_scheduler);
 #else
-  if (thread_handling <= SCHEDULER_ONE_THREAD_PER_CONNECTION)
-    one_thread_per_connection_scheduler();
-  else                  /* thread_handling == SCHEDULER_NO_THREADS) */
-    one_thread_scheduler();
+
+#ifdef _WIN32
+/* workaround: disable thread pool on XP */
+  if (GetProcAddress(GetModuleHandle("kernel32"),"CreateThreadpool") == 0 &&
+	thread_handling > SCHEDULER_NO_THREADS)
+  thread_handling = SCHEDULER_ONE_THREAD_PER_CONNECTION;
 #endif
+
+  if (thread_handling <= SCHEDULER_ONE_THREAD_PER_CONNECTION)
+    one_thread_per_connection_scheduler(thread_scheduler, &max_connections,
+                                        &connection_count);
+  else if (thread_handling == SCHEDULER_NO_THREADS)
+    one_thread_scheduler(thread_scheduler);
+  else
+    pool_of_threads_scheduler(thread_scheduler,  &max_connections,
+                                        &connection_count);
+	one_thread_per_connection_scheduler(extra_thread_scheduler,
+										&extra_max_connections,
+										&extra_connection_count);
+#endif
+
 
   global_system_variables.engine_condition_pushdown=
     MY_TEST(global_system_variables.optimizer_switch &

@@ -32,6 +32,7 @@ class Rpl_info_file : public Rpl_info_handler
 public:
   virtual ~Rpl_info_file();
 
+  int do_info_write();
 private:
   /**
     This uniquely identifies a file.

@@ -41,6 +41,55 @@ class Rpl_info_handler
 {
   friend class Rpl_info_factory;
 
+protected:
+  uint lines_in_master_info;
+  char* master_log_name;
+  my_off_t master_log_pos;
+  char* host;
+  char* user;
+  char* password;
+  uint port;
+  uint connect_retry;
+  my_bool ssl; // enables use of SSL connection if true
+  char *ssl_ca, *ssl_capath, *ssl_cert;
+  char *ssl_cipher, *ssl_key;
+  char *ssl_crl, *ssl_crlpath;
+  my_bool ssl_verify_server_cert;
+  float heartbeat_period;
+  char *bind_addr;
+  Dynamic_ids *ignore_server_ids;
+  char *master_uuid;
+  ulong retry_count;
+  bool auto_position;
+
+public:
+  inline void set_lines_in_master_info(uint s_lines_in_master_info)
+  { lines_in_master_info= s_lines_in_master_info; }
+  inline void set_master_log_name(char *s_master_log_name){ master_log_name=s_master_log_name; }
+  inline void set_host(char *t_host){ host= t_host; }
+  inline void set_user(char *t_user){ user= t_user; }
+  inline void set_password(char *s_password){ password=s_password; }
+  inline void set_port(uint s_port){ port=s_port; }
+  inline void set_master_log_pos(my_off_t s_master_log_pos){ master_log_pos= s_master_log_pos;}
+  inline void set_connect_retry(uint s_connect_retry){ connect_retry=s_connect_retry; }
+  inline void set_ssl(my_bool s_ssl){ ssl=s_ssl; }
+  inline void set_ssl_ca(char* s_ssl_ca){ ssl_ca=s_ssl_ca; }
+  inline void set_ssl_capath(char* s_ssl_capath){ ssl_capath=s_ssl_capath; }
+  inline void set_ssl_cert(char* s_ssl_cert){ ssl_cert=s_ssl_cert; }
+  inline void set_ssl_cipher(char* s_ssl_cipher){ ssl_cipher=s_ssl_cipher; }
+  inline void set_ssl_key(char* s_ssl_key){ ssl_key=s_ssl_key; }
+  inline void set_ssl_crl(char* s_ssl_crl){ ssl_crl=s_ssl_crl; }
+  inline void set_ssl_crlpath(char* s_ssl_crlpath){ ssl_crlpath=s_ssl_crlpath; }
+  inline void set_bind_addr(char* s_bind_addr){ bind_addr=s_bind_addr; }
+  inline void set_master_uuid(char* s_master_uuid){ master_uuid=s_master_uuid; }
+  inline void set_ssl_verify_server_cert(my_bool s_ssl_verify_server_cert)
+  { ssl_verify_server_cert=s_ssl_verify_server_cert; }
+  inline void set_heartbeat_period(float s_heartbeat_period){ heartbeat_period=s_heartbeat_period; }
+  inline void set_ignore_server_ids(Dynamic_ids* s_ignore_server_ids)
+  { ignore_server_ids=s_ignore_server_ids; }
+  inline void set_retry_count(ulong s_retry_count){ retry_count=s_retry_count; }
+  inline void set_auto_position(bool s_auto_position){ auto_position=s_auto_position; }
+  
 public:
   /**
     After creating an object and assembling components, this method is
@@ -89,6 +138,10 @@ public:
   */
   int flush_info(const bool force)
   {
+    if (!(force || (sync_period &&
+      ++(sync_counter) >= sync_period)))
+     return 0;
+
     return do_flush_info(force);
   }
 
@@ -366,6 +419,8 @@ protected:
 
   Rpl_info_handler(const int nparam);
 
+public:
+  virtual int do_info_write()= 0;
 private:
   virtual int do_init_info()= 0;
   virtual int do_init_info(uint instance)= 0;

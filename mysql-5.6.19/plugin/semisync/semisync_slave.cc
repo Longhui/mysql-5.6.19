@@ -135,5 +135,6 @@ int ReplSemiSyncSlave::slaveReply(MYSQL *mysql,
                     net->last_error, net->last_errno);
   }
 
+  net_clear(net, 0);
   return function_exit(kWho, reply_res);
 }

@@ -73,7 +73,7 @@ bool one_thread_per_connection_end(THD *thd, bool block_pthread);
 void kill_blocked_pthreads();
 void refresh_status(THD *thd);
 bool is_secure_file_path(char *path);
-void dec_connection_count();
+void dec_connection_count(THD *thd);
 
 // These are needed for unit testing.
 void set_remaining_args(int argc, char **argv);
@@ -87,6 +87,7 @@ extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *files_charset_info ;
 extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *national_charset_info;
 extern MYSQL_PLUGIN_IMPORT CHARSET_INFO *table_alias_charset;
 
+extern bool prepare_optimize;
 /**
   Character set of the buildin error messages loaded from errmsg.sys.
 */
@@ -94,6 +95,9 @@ extern CHARSET_INFO *error_message_charset_info;
 
 extern CHARSET_INFO *character_set_filesystem;
 
+extern ulong commit_number;
+extern ulong commit_group1_number;
+extern ulong commit_group2_number;
 extern MY_BITMAP temp_pool;
 extern bool opt_large_files, server_id_supplied;
 extern bool opt_update_log, opt_bin_log, opt_error_log;
@@ -205,6 +209,9 @@ extern uint  slave_net_timeout;
 extern ulong opt_mts_slave_parallel_workers;
 extern ulonglong opt_mts_pending_jobs_size_max;
 extern uint max_user_connections;
+extern ulong extra_max_connections;
+extern ulong thread_created;
+extern scheduler_functions *thread_scheduler, *extra_thread_scheduler;
 extern ulong rpl_stop_slave_timeout;
 extern my_bool log_bin_use_v1_row_events;
 extern ulong what_to_log,flush_time;
@@ -221,6 +228,7 @@ extern const char *binlog_checksum_type_names[];
 extern my_bool opt_master_verify_checksum;
 extern my_bool opt_slave_sql_verify_checksum;
 extern my_bool enforce_gtid_consistency;
+extern my_bool opt_binlog_user_ip;
 enum enum_gtid_mode
 {
   /// Support only anonymous groups, not GTIDs.
@@ -291,6 +299,11 @@ extern ulong connection_errors_peer_addr;
 extern ulong log_warnings;
 /** The size of the host_cache. */
 extern uint host_cache_size;
+extern char  *ha_partner_host;
+extern uint   ha_partner_port;
+extern char  *ha_partner_user;
+extern char  *ha_partner_password;
+
 void init_sql_statement_names();
 
 /*
@@ -759,5 +772,6 @@ inline THD *_current_thd(void)
 #define current_thd _current_thd()
 
 extern const char *MY_BIND_ALL_ADDRESSES;
+extern uint mysqld_extra_port;
 
 #endif /* MYSQLD_INCLUDED */

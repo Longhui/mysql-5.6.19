@@ -2033,7 +2033,9 @@ trx_prepare(
 
 		TODO: find out if MySQL holds some mutex when calling this.
 		That would spoil our group prepare algorithm. */
-
+               /*@raolh*/
+               if( thd_requested_durability(trx->mysql_thd) !=
+                   HA_IGNORE_DURABILITY )
 		trx_flush_log_if_needed(lsn, trx);
 	}
 }

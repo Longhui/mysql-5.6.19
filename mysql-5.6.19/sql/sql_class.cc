@@ -916,6 +916,7 @@ THD::THD(bool enable_plugins)
 #if defined(ENABLED_DEBUG_SYNC)
    debug_sync_control(0),
 #endif /* defined(ENABLED_DEBUG_SYNC) */
+   rpl_wait_begin_usec(0),
    m_enable_plugins(enable_plugins),
    owned_gtid_set(global_sid_map),
    main_da(0, false),
@@ -933,6 +934,12 @@ THD::THD(bool enable_plugins)
   init_sql_alloc(&main_mem_root, ALLOC_ROOT_MIN_BLOCK_SIZE, 0);
   stmt_arena= this;
   thread_stack= 0;
+  op_scheduler= thread_scheduler;                 // Will be fixed later
+  scheduler.data= 0;
+  scheduler.m_psi= 0;
+  skip_wait_timeout= false;
+  extra_port= 0;
+  skip_wait_timeout= false;
   catalog= (char*)"std"; // the only catalog we have for now
   main_security_ctx.init();
   security_ctx= &main_security_ctx;
@@ -3695,7 +3702,11 @@ void thd_increment_bytes_sent(ulong length)
 
 void thd_increment_bytes_received(ulong length)
 {
-  current_thd->status_var.bytes_received+= length;
+  THD *thd=current_thd;
+  if (likely(thd != 0))
+  {
+    thd->status_var.bytes_received+= length;
+  }
 }
 
 
@@ -4307,7 +4318,13 @@ extern "C" void thd_pool_wait_end(MYSQL_THD thd);
 */
 extern "C" void thd_wait_begin(MYSQL_THD thd, int wait_type)
 {
-  MYSQL_CALLBACK(thread_scheduler, thd_wait_begin, (thd, wait_type));
+   if (!thd)
+  {
+    thd= current_thd;
+    if (unlikely(!thd))
+      return;
+  }
+  MYSQL_CALLBACK(thd->op_scheduler, thd_wait_begin, (thd, wait_type));
 }
 
 /**
@@ -4318,7 +4335,13 @@ extern "C" void thd_wait_begin(MYSQL_THD thd, int wait_type)
 */
 extern "C" void thd_wait_end(MYSQL_THD thd)
 {
-  MYSQL_CALLBACK(thread_scheduler, thd_wait_end, (thd));
+  if (!thd)
+  {
+    thd= current_thd;
+    if (unlikely(!thd))
+      return;
+  }
+  MYSQL_CALLBACK(thd->op_scheduler, thd_wait_end, (thd));
 }
 #else
 extern "C" void thd_wait_begin(MYSQL_THD thd, int wait_type)

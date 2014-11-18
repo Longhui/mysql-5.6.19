@@ -1169,7 +1169,9 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
                                                          STRING_WITH_LEN(act)));
                     };);
     bool is_active_binlog= false;
-    while (!(error= Log_event::read_log_event(&log, packet, log_lock,
+    while (!(error= Log_event::read_log_event(&log, packet, 
+                                              mysql_bin_log.cmp_endpoint(log_file_name, my_b_tell(&log)) > 0 ?
+                                              NULL : log_lock,
                                               current_checksum_alg,
                                               log_file_name,
                                               &is_active_binlog)))

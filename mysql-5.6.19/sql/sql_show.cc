@@ -1995,6 +1995,7 @@ public:
 
   ulong thread_id;
   time_t start_time;
+  ulonglong rpl_wait_begin_usec;
   uint   command;
   const char *user,*host,*db,*proc_info,*state_info;
   CSET_STRING query_string;
@@ -2052,6 +2053,8 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
   field->maybe_null=1;
   field_list.push_back(new Item_empty_string("Command",16));
   field_list.push_back(field= new Item_return_int("Time",7, MYSQL_TYPE_LONG));
+  field->unsigned_flag= 0;
+  field_list.push_back(field= new Item_return_int("Ack_wait_time ",7, MYSQL_TYPE_LONGLONG));
   field->unsigned_flag= 0;
   field_list.push_back(field=new Item_empty_string("State",30));
   field->maybe_null=1;
@@ -2115,6 +2118,7 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
         }
         mysql_mutex_unlock(&tmp->LOCK_thd_data);
         thd_info->start_time= tmp->start_time.tv_sec;
+        thd_info->rpl_wait_begin_usec= tmp->rpl_wait_begin_usec;
         thread_infos.push_back(thd_info);
       }
     }
@@ -2141,6 +2145,10 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
       protocol->store_long ((longlong) (now - thd_info->start_time));
     else
       protocol->store_null();
+    if (thd_info->rpl_wait_begin_usec)
+      protocol->store_long (my_micro_time() - thd_info->rpl_wait_begin_usec);
+    else
+      protocol->store_long (0);
     protocol->store(thd_info->state_info, system_charset_info);
     protocol->store(thd_info->query_string.str(),
                     thd_info->query_string.charset());
@@ -2217,11 +2225,15 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, Item* cond)
       /* MYSQL_TIME */
       table->field[5]->store((longlong)(tmp->start_time.tv_sec ?
                                       now - tmp->start_time.tv_sec : 0), FALSE);
+      /* ACK_WAIT_TIME */
+      table->field[6]->store((longlong)(tmp->rpl_wait_begin_usec ?
+  	                              my_micro_time() - tmp->rpl_wait_begin_usec : 0), FALSE);
+
       /* STATE */
       if ((val= thread_state_info(tmp)))
       {
-        table->field[6]->store(val, strlen(val), cs);
-        table->field[6]->set_notnull();
+        table->field[7]->store(val, strlen(val), cs);
+        table->field[7]->set_notnull();
       }
 
       if (mysys_var)
@@ -2235,8 +2247,8 @@ int fill_schema_processlist(THD* thd, TABLE_LIST* tables, Item* cond)
       {
         size_t const width=
           min<size_t>(PROCESS_LIST_INFO_WIDTH, tmp->query_length());
-        table->field[7]->store(tmp->query(), width, cs);
-        table->field[7]->set_notnull();
+        table->field[8]->store(tmp->query(), width, cs);
+        table->field[8]->set_notnull();
       }
       mysql_mutex_unlock(&tmp->LOCK_thd_data);
 
@@ -7857,6 +7869,7 @@ ST_FIELD_INFO processlist_fields_info[]=
   {"DB", NAME_CHAR_LEN, MYSQL_TYPE_STRING, 0, 1, "Db", SKIP_OPEN_TABLE},
   {"COMMAND", 16, MYSQL_TYPE_STRING, 0, 0, "Command", SKIP_OPEN_TABLE},
   {"TIME", 7, MYSQL_TYPE_LONG, 0, 0, "Time", SKIP_OPEN_TABLE},
+  {"ACK_WAIT_TIME", 13, MYSQL_TYPE_LONGLONG, 0, 0, "Ack_wait_time", SKIP_OPEN_TABLE},
   {"STATE", 64, MYSQL_TYPE_STRING, 0, 1, "State", SKIP_OPEN_TABLE},
   {"INFO", PROCESS_LIST_INFO_WIDTH, MYSQL_TYPE_STRING, 0, 1, "Info",
    SKIP_OPEN_TABLE},

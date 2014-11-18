@@ -18,11 +18,47 @@
 
 #include <mysql.h>
 
+
+
+typedef int (*LOG_CALLBACK_FUNC)(IO_CACHE *log);
+extern void set_binlog_append_event_cb(LOG_CALLBACK_FUNC func);
+
+extern int binlog_rollback_append(IO_CACHE *log);
+
 typedef struct st_mysql MYSQL;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct Vsr_master_param {
+  char *slave_host;
+  uint  slave_port;
+  char *user;
+  char *passwd;
+  char *last_binlog;
+} Vsr_master_param;
+
+typedef struct Callback_funcs {
+  LOG_CALLBACK_FUNC log_callback;
+} Callback_funcs;
+
+typedef struct Vsr_master_observer {
+  uint32 len;
+  void (*before_recover)(Vsr_master_param *param);
+  void (*init_observer_cb)(Callback_funcs *param);
+} Vsr_master_observer;
+
+typedef struct Vsr_slave_param {
+  NET *net;
+  const char *filename;
+  my_off_t pos;
+} Vsr_slave_param;
+
+typedef struct Vsr_slave_observer {
+  uint32 len;
+  void (*master_request)(Vsr_slave_param *param);
+} Vsr_slave_observer;
 
 /**
    Transaction observer flags.
@@ -131,6 +167,10 @@ typedef struct Binlog_storage_observer {
   */
   int (*after_flush)(Binlog_storage_param *param,
                      const char *log_file, my_off_t log_pos);
+  int (*report_binlog_sync)(Binlog_storage_param *param,
+       						const char *log_file, my_off_t log_pos);
+  int (*enter_ordered_commit)(Binlog_storage_param *param);
+  int (*leave_ordered_commit)(Binlog_storage_param *param);
 } Binlog_storage_observer;
 
 /**
@@ -435,6 +475,12 @@ int register_binlog_transmit_observer(Binlog_transmit_observer *observer, void *
    @retval 1 Observer not exists
 */
 int unregister_binlog_transmit_observer(Binlog_transmit_observer *observer, void *p);
+
+void register_master_observer(Vsr_master_observer *observer);
+void unregister_master_observer();
+
+void register_slave_observer(Vsr_slave_observer *observer);
+void unregister_slave_observer();
 
 /**
    Register a binlog relay IO (slave IO thread) observer

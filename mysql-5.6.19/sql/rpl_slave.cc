@@ -649,10 +649,11 @@ int flush_master_info(Master_info* mi, bool force)
 
   mysql_mutex_lock(log_lock);
 
-  int err=  (mi->rli->flush_current_log() ||
-             mi->flush_info(force));
+  int err=  mi->rli->flush_current_log();
 
   mysql_mutex_unlock(log_lock);
+  
+  err = err || mi->flush_info(force);
 
   DBUG_RETURN (err);
 }
@@ -4322,7 +4323,8 @@ requesting master dump") ||
     while (!io_slave_killed(thd,mi))
     {
       ulong event_len;
-      /*
+
+     /*
          We say "waiting" because read_event() will wait if there's nothing to
          read. But if there's something to read, it will not wait. The
          important thing is to not confuse users by saying "reading" whereas
@@ -4330,6 +4332,7 @@ requesting master dump") ||
       */
       THD_STAGE_INFO(thd, stage_waiting_for_master_to_send_event);
       event_len= read_event(mysql, mi, &suppress_warnings);
+
       if (check_io_slave_killed(thd, mi, "Slave I/O thread killed while \
 reading event"))
         goto err;
@@ -4408,16 +4411,16 @@ Stopping slave I/O thread due to out-of-memory error from master");
         goto err;
       }
 
-      mysql_mutex_lock(&mi->data_lock);
+//      mysql_mutex_lock(&mi->data_lock);
       if (flush_master_info(mi, FALSE))
       {
         mi->report(ERROR_LEVEL, ER_SLAVE_FATAL_ERROR,
                    ER(ER_SLAVE_FATAL_ERROR),
                    "Failed to flush master info.");
-        mysql_mutex_unlock(&mi->data_lock);
+//       mysql_mutex_unlock(&mi->data_lock);
         goto err;
       }
-      mysql_mutex_unlock(&mi->data_lock);
+//      mysql_mutex_unlock(&mi->data_lock);
 
       /*
         See if the relay logs take too much space.
@@ -8215,6 +8218,31 @@ bool change_master(THD* thd, Master_info* mi)
   saved_port= mi->port;
   strmake(saved_log_name, mi->get_master_log_name(), FN_REFLEN - 1);
   saved_log_pos= mi->get_master_log_pos();
+
+  if (lex_mi->replicate_do_db)
+  {
+    rpl_filter->set_do_db((const char*)lex_mi->replicate_do_db);
+  }
+  if (lex_mi->replicate_ignore_db)
+  {
+    rpl_filter->set_ignore_db((const char*)lex_mi->replicate_ignore_db);
+  }
+  if (lex_mi->replicate_do_table)
+  {
+    rpl_filter->set_do_table((const char*)lex_mi->replicate_do_table);
+  }
+  if (lex_mi->replicate_ignore_table)
+  {
+    rpl_filter->set_ignore_table((const char*)lex_mi->replicate_ignore_table);
+  }
+  if (lex_mi->replicate_wild_do_table)
+  {
+    rpl_filter->set_wild_do_table((const char*)lex_mi->replicate_wild_do_table);
+  }
+  if (lex_mi->replicate_wild_ignore_table)
+  {
+    rpl_filter->set_wild_ignore_table((const char*)lex_mi->replicate_wild_ignore_table);
+  }
 
   /*
     If the user specified host or port without binlog or position,

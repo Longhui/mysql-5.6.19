@@ -558,6 +558,8 @@ typedef struct system_variables
 
   Gtid_specification gtid_next;
   Gtid_set_or_null gtid_next_list;
+  uint  threadpool_high_prio_tickets;
+  ulong threadpool_high_prio_mode;
 } SV;
 
 
@@ -2082,7 +2084,8 @@ private:
 
 public:
   MDL_context mdl_context;
-
+  /*@raolh*/
+  ulonglong rpl_wait_begin_usec;
   /* Used to execute base64 coded binlog events in MySQL server */
   Relay_log_info* rli_fake;
   /* Slave applier execution context */
@@ -2249,6 +2252,8 @@ public:
 
   /* <> 0 if we are inside of trigger or stored function. */
   uint in_sub_stmt;
+  /* Do not set socket timeouts for wait_timeout (used with threadpool) */
+  bool skip_wait_timeout;
 
   /** 
     Used by fill_status() to avoid acquiring LOCK_status mutex twice
@@ -3052,6 +3057,7 @@ public:
 
   /// @todo: slave_thread is completely redundant, we should use 'system_thread' instead /sven
   bool       slave_thread, one_shot_set;
+  bool       extra_port;
   bool	     no_errors;
   char       flashback_stmt[2048];
   bool       flashback_thd;
@@ -3952,6 +3958,7 @@ public:
     return FALSE;
   }
   thd_scheduler scheduler;
+  scheduler_functions *op_scheduler;// Scheduler for this connection
 
   /* Returns string as 'IP:port' for the client-side
      of the connnection represented
