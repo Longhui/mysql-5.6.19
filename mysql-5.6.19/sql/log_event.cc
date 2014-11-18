@@ -2557,9 +2557,16 @@ void Rows_log_event::exchange_update_rows(PRINT_EVENT_INFO *print_event_info,
   table_def *td;
   uchar *data_buff= rows_buff + m_rows_before_size;
 
-  if (!(map= print_event_info->m_table_map.get_table(m_table_id)) ||
-      !(td= map->create_table_def()))
+
+  if (map= print_event_info->m_table_map.get_table(m_table_id))
   {
+  	if (!(td= map->create_table_def()))
+	{
+  	fprintf(stderr, "exchange_update_rows td=null\n");
+    return;
+	}
+  } else {
+	 fprintf(stderr, "exchange_update_rows map = null\n");
     return;
   }
 
@@ -2746,18 +2753,30 @@ void Log_event::print_base64(IO_CACHE* file,
   if (is_flashback) //Flashback
   {
     uint32 fb_size = size;
-    switch (ptr[4]) {
+
+	if (checksum_alg != BINLOG_CHECKSUM_ALG_UNDEF &&
+	  checksum_alg != BINLOG_CHECKSUM_ALG_OFF)
+	fb_size-= BINLOG_CHECKSUM_LEN; // checksum is displayed through the header
+
+    switch (ptr[EVENT_TYPE_OFFSET]) {
+
+	  case TABLE_MAP_EVENT:
+	  {
+		Table_map_log_event *map; 
+		map= new Table_map_log_event((const char*) ptr, fb_size, 
+									 glob_description_event);
+		print_event_info->m_table_map.set_table(map->get_table_id(), map);
+		break;
+	  }
+
       case WRITE_ROWS_EVENT:
-        ptr[4]= DELETE_ROWS_EVENT;
+        ptr[EVENT_TYPE_OFFSET]= DELETE_ROWS_EVENT;
         break;
       case DELETE_ROWS_EVENT:
-        ptr[4]= WRITE_ROWS_EVENT;
+        ptr[EVENT_TYPE_OFFSET]= WRITE_ROWS_EVENT;
         break;
       case UPDATE_ROWS_EVENT:
         Rows_log_event *ev= NULL;
-        if (checksum_alg != BINLOG_CHECKSUM_ALG_UNDEF &&
-          checksum_alg != BINLOG_CHECKSUM_ALG_OFF)
-        fb_size-= BINLOG_CHECKSUM_LEN; // checksum is displayed through the header
 
 	 	ev= new Update_rows_log_event((const char*) ptr, fb_size,
                                        glob_description_event);
@@ -2796,11 +2815,14 @@ void Log_event::print_base64(IO_CACHE* file,
     {
     case TABLE_MAP_EVENT:
     {
-      Table_map_log_event *map; 
-      map= new Table_map_log_event((const char*) ptr, size, 
+	  if (!is_flashback) 
+	  {
+      	Table_map_log_event *map; 
+      	map= new Table_map_log_event((const char*) ptr, size, 
                                    glob_description_event);
-      print_event_info->m_table_map.set_table(map->get_table_id(), map);
-      break;
+      	print_event_info->m_table_map.set_table(map->get_table_id(), map);
+	  }
+	  break;
     }
     case WRITE_ROWS_EVENT:
     case WRITE_ROWS_EVENT_V1:
