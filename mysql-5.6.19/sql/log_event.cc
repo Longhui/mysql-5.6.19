@@ -2759,7 +2759,7 @@ void Log_event::print_base64(IO_CACHE* file,
 	fb_size-= BINLOG_CHECKSUM_LEN; // checksum is displayed through the header
 
     switch (ptr[EVENT_TYPE_OFFSET]) {
-
+	  //add TABLE_MAP_EVENT, as UPDATE_ROWS_EVENT need to get_table from map
 	  case TABLE_MAP_EVENT:
 	  {
 		Table_map_log_event *map; 
@@ -2815,6 +2815,7 @@ void Log_event::print_base64(IO_CACHE* file,
     {
     case TABLE_MAP_EVENT:
     {
+	  //if flashback, map has already set into hash above
 	  if (!is_flashback) 
 	  {
       	Table_map_log_event *map; 

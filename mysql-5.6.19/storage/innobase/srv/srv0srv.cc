@@ -3112,19 +3112,14 @@ srv_fc_flush_thread(
 	}
 
 srv_shutdown:
-	fprintf(stderr, "L2 flush thread before: %s\n", srv_main_thread_op_info);	
+
 	/* waiting for master thread to quit first */
-	
 //	while(strcmp(srv_main_thread_op_info, "waiting for server activity")) {
 	while (srv_shutdown_state < SRV_SHUTDOWN_LAST_PHASE) {
-
 		os_thread_sleep(1000000);
-	fprintf(stderr, "L2 flush thread :%s\n", srv_main_thread_op_info);	
 		if(srv_flash_cache_enable_write)
 			fc_flush_to_disk(TRUE);
 	}
-
-	fprintf(stderr, "L2 flush thread go after: %s\n", srv_main_thread_op_info);
 
 	if (!srv_flash_cache_fast_shutdown) {
 		ut_print_timestamp(stderr);

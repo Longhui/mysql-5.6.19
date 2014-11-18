@@ -3492,7 +3492,7 @@ loop:
 
 		if (fc_is_enabled()) {
 			while (!srv_fc_flush_thread_exited) {
-				fprintf(stderr,"wait flush thread to exit!\n");
+				fprintf(stderr,"waiting L2 Cache flush thread to exit!\n");
 				os_thread_sleep(100000);
 			}
 			fil_flush_file_spaces(FIL_FLASH_CACHE);
