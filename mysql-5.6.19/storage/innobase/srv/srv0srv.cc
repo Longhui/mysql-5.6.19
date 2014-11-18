@@ -2481,23 +2481,15 @@ suspend_thread:
 
 	srv_suspend_thread(slot);
 
-	fprintf(stderr, "Master thread before set op waiting \n");
-
-
 	/* DO NOT CHANGE THIS STRING. innobase_start_or_create_for_mysql()
 	waits for database activity to die down when converting < 4.1.x
 	databases, and relies on this string being exactly as it is. InnoDB
 	manual also mentions this string in several places. */
 	srv_main_thread_op_info = "waiting for server activity";
 
-	fprintf(stderr, "Master thread after set op waiting \n");
-
 	os_event_wait(slot->event);
-	fprintf(stderr, "Master thread after slot event wait %s\n", srv_main_thread_op_info);
 
-
-	if (srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {
-		fprintf(stderr, "Master thread exit\n");	
+	if (srv_shutdown_state == SRV_SHUTDOWN_EXIT_THREADS) {	
 		os_thread_exit(NULL);
 	}
 

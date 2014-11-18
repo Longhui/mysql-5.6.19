@@ -1,0 +1,210 @@
+set binlog_format=row;
+set sql_log_flashback=1;
+flush logs;
+use test;
+
+******* ddl test
+
+xxx 1.test flashback rename table sql
+create table t1 (a int);
+insert into t1 value (1);
+before:
+show tables;
+Tables_in_test
+t1
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t1;
+a
+1
+rename table t1 to t2;
+after create table and insert:
+show tables;
+Tables_in_test
+t2
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t2;
+a
+1
+flush logs;
+after flashback:
+show tables;
+Tables_in_test
+t1
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t1;
+a
+1
+drop table t1;
+xxx
+
+xxx 2.test flashback alter rename table sql
+create table t1 (a int);
+insert into t1 value (1);
+before:
+show tables;
+Tables_in_test
+t1
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t1;
+a
+1
+alter table t1 rename to t2;
+after create table and insert:
+show tables;
+Tables_in_test
+t2
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t2;
+a
+1
+flush logs;
+after flashback:
+show tables;
+Tables_in_test
+t1
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t1;
+a
+1
+drop table t1;
+xxx
+
+xxx 3.test flashback truncate table sql
+create table t1 (a int);
+insert into t1 value (1);
+before:
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t1;
+a
+1
+truncate table t1;
+after truncate t1:
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t1;
+a
+flush logs;
+after flashback:
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+select * from t1;
+a
+1
+drop table t1;
+xxx
+
+xxx 4.test flashback create table like sql
+create table t1 (a int);
+insert into t1 value (1);
+before:
+show tables;
+Tables_in_test
+t1
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+create table t2 like t1;
+after create t2 like t1:
+show tables;
+Tables_in_test
+t1
+t2
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+flush logs;
+after flashback:
+show tables;
+Tables_in_test
+t1
+show create table t1;
+Table	Create Table
+t1	CREATE TABLE `t1` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1
+drop table t1;
+xxx
+
+xxx 5.test flashback rename column sql
+create table t2 (a int) engine=innodb default charset=utf8;
+insert into t2 value (1);
+alter table t2 add column b int, ALGORITHM=COPY;
+update t2 set b=2;
+before:
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `a` int(11) DEFAULT NULL,
+  `b` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+select * from t2;
+a	b
+1	2
+alter table t2 change column b bn int, ALGORITHM=COPY;
+after rename column b to bn:
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `a` int(11) DEFAULT NULL,
+  `bn` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+select * from t2;
+a	bn
+1	2
+flush logs;
+after flashback:
+show create table t2;
+Table	Create Table
+t2	CREATE TABLE `t2` (
+  `a` int(11) DEFAULT NULL,
+  `b` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+select * from t2;
+a	b
+1	2
+drop table t2;
+xxx
+
