@@ -80,6 +80,8 @@ def	mysql	PRIMARY	def	mysql	columns_priv	Db
 def	mysql	PRIMARY	def	mysql	columns_priv	User
 def	mysql	PRIMARY	def	mysql	columns_priv	Table_name
 def	mysql	PRIMARY	def	mysql	columns_priv	Column_name
+def	mysql	PRIMARY	def	mysql	current_user_exhaust	Host
+def	mysql	PRIMARY	def	mysql	current_user_exhaust	User
 def	mysql	PRIMARY	def	mysql	db	Host
 def	mysql	PRIMARY	def	mysql	db	Db
 def	mysql	PRIMARY	def	mysql	db	User
@@ -116,6 +118,7 @@ def	mysql	PRIMARY	def	mysql	proxies_priv	Host
 def	mysql	PRIMARY	def	mysql	proxies_priv	User
 def	mysql	PRIMARY	def	mysql	proxies_priv	Proxied_host
 def	mysql	PRIMARY	def	mysql	proxies_priv	Proxied_user
+def	mysql	PRIMARY	def	mysql	roles_priv	role_name
 def	mysql	PRIMARY	def	mysql	servers	Server_name
 def	mysql	PRIMARY	def	mysql	slave_master_info	Host
 def	mysql	PRIMARY	def	mysql	slave_master_info	Port
@@ -134,6 +137,7 @@ def	mysql	PRIMARY	def	mysql	time_zone_transition_type	Time_zone_id
 def	mysql	PRIMARY	def	mysql	time_zone_transition_type	Transition_type_id
 def	mysql	PRIMARY	def	mysql	user	Host
 def	mysql	PRIMARY	def	mysql	user	User
+def	mysql	PRIMARY	def	mysql	user_profiler	Profile_name
 ########################################################################################
 # Testcase 3.2.7.2 + 3.2.7.3: INFORMATION_SCHEMA.KEY_COLUMN_USAGE accessible information
 ########################################################################################

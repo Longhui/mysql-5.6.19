@@ -31,7 +31,6 @@ char rpl_semi_sync_master_enabled;
 unsigned long rpl_semi_sync_master_timeout;
 unsigned long rpl_semi_sync_master_trace_level;
 char rpl_semi_sync_master_status                    = 0;
-char _ack_receiver_enabled = 0;
 unsigned long rpl_semi_sync_master_yes_transactions = 0;
 unsigned long rpl_semi_sync_master_no_transactions  = 0;
 unsigned long rpl_semi_sync_master_off_times        = 0;
@@ -48,7 +47,6 @@ unsigned long long rpl_semi_sync_master_net_wait_time = 0;
 unsigned long long rpl_semi_sync_master_trx_wait_time = 0;
 char rpl_semi_sync_master_wait_no_slave = 1;
 char rpl_semi_sync_master_commit_after_ack = 0;
-char rpl_semi_sync_ack_receiver_enabled = 0;
 char rpl_semi_sync_master_keepsyncrepl = 0;
 char rpl_semi_sync_master_trysyncrepl = 1;
 mysql_mutex_t LOCK_ordered_commit;
@@ -1176,75 +1174,7 @@ int ReplSemiSyncMaster::readSlaveReply(NET *net, uint32 server_id,
 
   net_clear(net, 0);
 
-  if ( ! _ack_receiver_enabled )
-  {
-     if (trc_level & kTraceDetail)
-     sql_print_information("%s: Wait for replica's reply", kWho);
-   
-     /* Wait for the network here.  Though binlog dump thread can indefinitely wait
-      * here, transactions would not wait indefintely.
-      * Transactions wait on binlog replies detected by binlog dump threads.  If
-      * binlog dump threads wait too long, transactions will timeout and continue.
-      */
-     packet_len = my_net_read(net);
-   
-     if (trc_level & kTraceNetWait)
-     {
-       int wait_time = getWaitTime(start_ts);
-       if (wait_time < 0)
-       {
-         sql_print_information("Assessment of waiting time for "
-                               "readSlaveReply failed.");
-         rpl_semi_sync_master_timefunc_fails++;
-       }
-       else
-       {
-         rpl_semi_sync_master_net_wait_num++;
-         rpl_semi_sync_master_net_wait_time += wait_time;
-       }
-     }
-   
-     if (packet_len == packet_error || packet_len < REPLY_BINLOG_NAME_OFFSET)
-     {
-       if (packet_len == packet_error)
-         sql_print_error("Read semi-sync reply network error: %s (errno: %d)",
-                         net->last_error, net->last_errno);
-       else
-         sql_print_error("Read semi-sync reply length error: %s (errno: %d)",
-                         net->last_error, net->last_errno);
-       goto l_end;
-     }
-   
-     packet = net->read_pos;
-     if (packet[REPLY_MAGIC_NUM_OFFSET] != ReplSemiSyncMaster::kPacketMagicNum)
-     {
-       sql_print_error("Read semi-sync reply magic number error");
-       goto l_end;
-     }
-   
-     log_file_pos = uint8korr(packet + REPLY_BINLOG_POS_OFFSET);
-     log_file_len = packet_len - REPLY_BINLOG_NAME_OFFSET;
-     if (log_file_len >= FN_REFLEN)
-     {
-       sql_print_error("Read semi-sync reply binlog file length too large");
-       goto l_end;
-     }
-     strncpy(log_file_name, (const char*)packet + REPLY_BINLOG_NAME_OFFSET, log_file_len);
-     log_file_name[log_file_len] = 0;
-   
-     if (trc_level & kTraceDetail)
-       sql_print_information("%s: Got reply (%s, %lu)",
-                             kWho, log_file_name, (ulong)log_file_pos);
-   
-     result = reportReplyBinlog(server_id, log_file_name, log_file_pos);
-  /*
-    @raolh
-    we add net_clear here to insure network serial number of master and slave  is identical
-  */
-     net_clear(net, 0);
-  } else {//if( _ack_receiver_enabled )
-     rpl_semi_sync_master_net_wait_num++;
-  }
+  rpl_semi_sync_master_net_wait_num++;
 
  l_end:
   return function_exit(kWho, result);

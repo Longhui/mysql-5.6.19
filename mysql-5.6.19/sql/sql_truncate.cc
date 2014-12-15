@@ -523,7 +523,52 @@ bool Sql_cmd_truncate_table::truncate_table(THD *thd, TABLE_LIST *table_ref)
   DBUG_RETURN(error);
 }
 
+/**
+ * bak table before TRUNCATE statement runs.
+ * 
+ * @return FALSE on success.
+ **/
 
+bool bak_table(TABLE_LIST *table)
+{
+  bool res= TRUE;
+  char new_name_buff[FN_REFLEN + 1];
+  ulonglong micro_time= my_micro_time();
+  snprintf(new_name_buff, sizeof(new_name_buff), 
+    "%s_%llu", FLASHBACK_TBL_PREFIX, micro_time);
+
+  char buf[1024];
+  snprintf(buf, sizeof(buf), "rename table `%s`.`%s` to `%s`.`%s`;", 
+  table->db, table->table_name, FLASHBACK_DB, new_name_buff);
+
+  THD *thd= new THD;
+  thd->thread_stack= (char *)&thd;
+  thd->flashback_thd= true;
+  thd->variables.sql_log_flashback= true;
+  
+  Parser_state parser_state;
+  thd->set_query(buf, strlen(buf)+1);
+  if (!parser_state.init(thd, thd->query(), thd->query_length()))
+  {
+    mysql_parse(thd, thd->query(), thd->query_length(), &parser_state);
+  }
+
+  if (!thd->is_error())
+  {
+    snprintf(buf, sizeof(buf), "create table `%s`.`%s` like `%s`.`%s`;", 
+       table->db, table->table_name, FLASHBACK_DB, new_name_buff);
+
+    thd->set_query(buf, strlen(buf) + 1);
+    parser_state.init(thd, thd->query(), thd->query_length());
+    mysql_parse(thd, thd->query(), thd->query_length(), &parser_state);
+  }
+
+  res= thd->is_error();
+
+  delete thd;
+
+  return res;
+}
 /**
   Execute a TRUNCATE statement at runtime.
 
@@ -541,6 +586,61 @@ bool Sql_cmd_truncate_table::execute(THD *thd)
   {
     my_error(ER_USER_TABLE_DROPPED, MYF(0));
     DBUG_RETURN(res);
+  }
+  if (thd->variables.sql_log_flashback)
+  {
+    char buf[1024]; 
+    char new_name_buff[FN_REFLEN + 1];
+    ulonglong micro_time= my_micro_time();
+    THD *flashback_thd= new THD;  
+
+    THD *original_thd= my_pthread_getspecific(THD*, THR_THD);
+    MEM_ROOT* original_mem_root= my_pthread_getspecific(MEM_ROOT*, THR_MALLOC);
+
+    snprintf(new_name_buff, sizeof(new_name_buff), 
+      "%s_%llu", FLASHBACK_TBL_PREFIX, micro_time);
+ 
+    snprintf(buf, sizeof(buf), "rename table `%s`.`%s` to `%s`.`%s`;", 
+      first_table->db, first_table->table_name, FLASHBACK_DB, new_name_buff);
+ 
+    flashback_thd->thread_stack= (char *)&flashback_thd;
+    flashback_thd->flashback_thd= true;
+    flashback_thd->variables.sql_log_flashback= true;
+    flashback_thd->store_globals();  
+    set_mysys_var(flashback_thd->mysys_var);
+
+    Parser_state parser_state;
+    flashback_thd->set_query(buf, strlen(buf)+1);
+    if (!parser_state.init(flashback_thd, flashback_thd->query(), 
+      flashback_thd->query_length()))
+    {
+      mysql_parse(flashback_thd, flashback_thd->query(), 
+        flashback_thd->query_length(), &parser_state);
+    } 
+    if (!flashback_thd->is_error())
+    {
+      snprintf(buf, sizeof(buf), "create table `%s`.`%s` like `%s`.`%s`;", 
+        first_table->db, first_table->table_name, FLASHBACK_DB, new_name_buff);
+ 
+      flashback_thd->set_query(buf, strlen(buf) + 1);
+      parser_state.init(flashback_thd, flashback_thd->query(), 
+      flashback_thd->query_length());
+      mysql_parse(flashback_thd, flashback_thd->query(), 
+          flashback_thd->query_length(), &parser_state);
+    }
+ 
+    res= flashback_thd->is_error();
+ 
+    delete flashback_thd;
+
+    my_pthread_setspecific_ptr(THR_MALLOC,  original_mem_root);
+    my_pthread_setspecific_ptr(THR_THD, original_thd);
+    set_mysys_var(thd->mysys_var);
+ 
+    if (res) {
+      sql_print_error(" flashback return error when doing truncate table");
+      return TRUE;
+    }
   }
   if (check_one_table_access(thd, DROP_ACL, first_table))
     DBUG_RETURN(res);

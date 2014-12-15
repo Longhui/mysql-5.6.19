@@ -58,6 +58,7 @@ FROM information_schema.table_constraints
 WHERE constraint_catalog IS NOT NULL;
 constraint_catalog	constraint_schema	constraint_name	table_schema	table_name
 def	mysql	PRIMARY	mysql	columns_priv
+def	mysql	PRIMARY	mysql	current_user_exhaust
 def	mysql	PRIMARY	mysql	db
 def	mysql	PRIMARY	mysql	event
 def	mysql	PRIMARY	mysql	func
@@ -75,6 +76,7 @@ def	mysql	PRIMARY	mysql	plugin
 def	mysql	PRIMARY	mysql	proc
 def	mysql	PRIMARY	mysql	procs_priv
 def	mysql	PRIMARY	mysql	proxies_priv
+def	mysql	PRIMARY	mysql	roles_priv
 def	mysql	PRIMARY	mysql	servers
 def	mysql	PRIMARY	mysql	slave_master_info
 def	mysql	PRIMARY	mysql	slave_relay_log_info
@@ -86,6 +88,7 @@ def	mysql	PRIMARY	mysql	time_zone_name
 def	mysql	PRIMARY	mysql	time_zone_transition
 def	mysql	PRIMARY	mysql	time_zone_transition_type
 def	mysql	PRIMARY	mysql	user
+def	mysql	PRIMARY	mysql	user_profiler
 #########################################################################################
 # Testcase 3.2.7.2 + 3.2.7.3: INFORMATION_SCHEMA.TABLE_CONSTRAINTS accessible information
 #########################################################################################

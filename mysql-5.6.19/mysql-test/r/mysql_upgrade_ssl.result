@@ -4,6 +4,7 @@
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -19,6 +20,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -31,6 +33,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.

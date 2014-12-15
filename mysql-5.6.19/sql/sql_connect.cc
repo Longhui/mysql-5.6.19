@@ -1061,7 +1061,7 @@ void do_handle_one_connection(THD *thd_arg)
         statistics_reset_sql_info(thd->m_sql_info, thd->charset()->number);
       mysql_audit_release(thd);
       if (do_command(thd))
-  break;
+        break;
     }
     end_connection(thd);
 

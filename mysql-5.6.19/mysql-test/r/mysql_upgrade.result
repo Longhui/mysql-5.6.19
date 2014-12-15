@@ -2,6 +2,7 @@ Run mysql_upgrade once
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -17,6 +18,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -29,6 +31,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
@@ -40,6 +43,7 @@ Force should run it regardless of wether it's been run before
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -55,6 +59,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -67,6 +72,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
@@ -79,6 +85,7 @@ Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -94,6 +101,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -106,6 +114,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
@@ -113,6 +122,7 @@ mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
 DROP USER mysqltest1@'%';
 Run mysql_upgrade with a non existing server socket
+Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysqlcheck: Got error: 2005: Unknown MySQL server host 'not_existing_host' (errno) when trying to connect
 FATAL ERROR: Upgrade failed
@@ -122,6 +132,7 @@ Warning	1681	'NO_ZERO_DATE' is deprecated and will be removed in a future releas
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -137,6 +148,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -149,6 +161,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
@@ -164,6 +177,7 @@ UPDATE mysql.proc SET character_set_client = NULL WHERE name LIKE 'testproc';
 UPDATE mysql.proc SET collation_connection = NULL WHERE name LIKE 'testproc';
 UPDATE mysql.proc SET db_collation = NULL WHERE name LIKE 'testproc';
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -179,6 +193,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -191,6 +206,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
 CALL testproc();
@@ -213,6 +229,7 @@ Run mysql_upgrade with all privileges on a user
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -228,6 +245,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -240,6 +258,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
@@ -259,6 +278,7 @@ Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -274,6 +294,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -286,6 +307,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
@@ -298,6 +320,7 @@ mtr.test_suppressions                              OK
 # Droping the previously created mysql_upgrade_info file..
 # Running mysql_upgrade with --skip-write-binlog..
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -313,6 +336,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -325,10 +349,12 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
 # Running mysql_upgrade with --write-binlog..
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -344,6 +370,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -356,6 +383,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
 #
@@ -370,6 +398,7 @@ Run mysql_upgrade with all privileges on a user
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -385,6 +414,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -397,6 +427,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning	1642	Pre-4.1 password hash found. It is deprecated and will be removed in a future release. Please upgrade it to a new format.
 Warning: Using a password on the command line interface can be insecure.

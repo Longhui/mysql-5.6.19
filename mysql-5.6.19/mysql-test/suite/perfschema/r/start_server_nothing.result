@@ -1,6 +1,7 @@
 show databases;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema

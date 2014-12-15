@@ -1,6 +1,7 @@
 show tables;
 Tables_in_db
 columns_priv
+current_user_exhaust
 db
 event
 func
@@ -16,6 +17,7 @@ plugin
 proc
 procs_priv
 proxies_priv
+roles_priv
 servers
 slave_master_info
 slave_relay_log_info
@@ -28,6 +30,7 @@ time_zone_name
 time_zone_transition
 time_zone_transition_type
 user
+user_profiler
 show create table db;
 Table	Create Table
 db	CREATE TABLE `db` (
@@ -91,6 +94,7 @@ user	CREATE TABLE `user` (
   `Event_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
   `Trigger_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
   `Create_tablespace_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
+  `Profile_priv` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
   `ssl_type` enum('','ANY','X509','SPECIFIED') CHARACTER SET utf8 NOT NULL DEFAULT '',
   `ssl_cipher` blob NOT NULL,
   `x509_issuer` blob NOT NULL,
@@ -102,6 +106,8 @@ user	CREATE TABLE `user` (
   `plugin` char(64) COLLATE utf8_bin DEFAULT '',
   `authentication_string` text COLLATE utf8_bin,
   `password_expired` enum('N','Y') CHARACTER SET utf8 NOT NULL DEFAULT 'N',
+  `profile_name` char(64) COLLATE utf8_bin NOT NULL DEFAULT '',
+  `role_name` char(64) COLLATE utf8_bin NOT NULL DEFAULT '',
   PRIMARY KEY (`Host`,`User`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='Users and global privileges'
 show create table func;
@@ -238,12 +244,14 @@ slow_log	CREATE TABLE `slow_log` (
   `lock_time` time NOT NULL,
   `rows_sent` int(11) NOT NULL,
   `rows_examined` int(11) NOT NULL,
+  `logical_reads` int(11) NOT NULL,
+  `physical_reads` int(11) NOT NULL,
   `db` varchar(512) NOT NULL,
   `last_insert_id` int(11) NOT NULL,
   `insert_id` int(11) NOT NULL,
   `server_id` int(10) unsigned NOT NULL,
   `sql_text` mediumtext NOT NULL,
   `thread_id` bigint(21) unsigned NOT NULL
-) ENGINE=CSV DEFAULT CHARSET=utf8 COMMENT='Slow log'
+) ENGINE=MyISAM DEFAULT CHARSET=utf8 COMMENT='Slow log'
 show tables;
 Tables_in_test

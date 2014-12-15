@@ -96,7 +96,7 @@ static const char *handler_error_messages[]=
   "Operation not allowed when innodb_forced_recovery > 0",
   "Too many words in a FTS phrase or proximity search",
   "user in user_list_string can not to be deleted or updated",
-  "table mysql.user can not to be truncated or dropped"
+  "table mysql.user can not to be truncated or dropped",
   "User's CPU resource is exhausted",
   "User's IO resource is exhausted",
   "Current trx CPU times is more than the user limited, the trx will be rollback",

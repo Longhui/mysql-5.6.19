@@ -1068,7 +1068,6 @@ bool do_command(THD *thd)
   DBUG_PRINT("info",("Command on %s = %d (%s)",
                      vio_description(net->vio), command,
                      command_name[command].str));
-
   /* Restore read timeout value */
   my_net_set_read_timeout(net, thd->variables.net_read_timeout);
 

@@ -67,6 +67,7 @@ SET(SQL_EMBEDDED_SOURCES
   ../sql/rpl_utility.cc
   ../sql/sql_iostat.cc
   ../sql/uuid.cc
+  ../sql/sql_acl.cc
   ../sql/rpl_gtid_misc.cc
   ../sql/rpl_gtid_sid_map.cc
   ../sql/rpl_gtid_set.cc

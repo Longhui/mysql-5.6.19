@@ -8,6 +8,7 @@ CREATE DATABASE test_ignore;
 SHOW DATABASES;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema
@@ -37,6 +38,7 @@ include/sync_slave_sql_with_master.inc
 SHOW DATABASES;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema

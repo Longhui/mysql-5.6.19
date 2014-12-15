@@ -7113,7 +7113,7 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     wait_queue= commit_queue;
   }
   else
-    mysql_mutex_unlock(&LOCK_sync);
+    mysql_mutex_unlock(&LOCK_log);
 
   /* Commit done so signal all waiting threads */
   stage_manager.signal_done(wait_queue);

@@ -3803,6 +3803,7 @@ void handler::print_error(int error, myf errflag)
     break;
   case HA_ERR_USER_TABLE_DROPPED:
     textno = ER_USER_TABLE_DROPPED;
+    break;
   case HA_ERR_CPU_TIMES_LIMITED:
  	  textno = ER_CPU_TIMES_LIMITED;
     break;

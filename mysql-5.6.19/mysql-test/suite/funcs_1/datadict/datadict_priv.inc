@@ -17,7 +17,7 @@
 # let $table= processlist;
 #
 # columns of the information_schema table e.g. to use in a select.
-# let $columns= ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO;
+# let $columns= ID, USER, HOST, DB, COMMAND, TIME, ACK_WAIT_TIME, STATE, INFO;
 #
 # Where clause for an update.
 # let $update_where= WHERE id=1 ;

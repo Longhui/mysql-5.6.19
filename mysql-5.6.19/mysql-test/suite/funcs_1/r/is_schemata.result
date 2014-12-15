@@ -54,6 +54,7 @@ FROM information_schema.schemata
 WHERE catalog_name IS NOT NULL or sql_path IS NOT NULL;
 catalog_name	schema_name	sql_path
 def	information_schema	NULL
+def	#bak_database	NULL
 def	mtr	NULL
 def	mysql	NULL
 def	performance_schema	NULL

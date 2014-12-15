@@ -24,6 +24,7 @@ def	test	latin1	latin1_swedish_ci	NULL
 select schema_name from information_schema.schemata;
 schema_name
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema
@@ -34,6 +35,7 @@ test
 show databases;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema
@@ -85,6 +87,7 @@ TRIGGERS
 USER_PRIVILEGES
 VIEWS
 columns_priv
+current_user_exhaust
 db
 event
 func
@@ -97,6 +100,7 @@ plugin
 proc
 procs_priv
 proxies_priv
+roles_priv
 servers
 slave_master_info
 slave_relay_log_info
@@ -109,6 +113,7 @@ time_zone_name
 time_zone_transition
 time_zone_transition_type
 user
+user_profiler
 t1
 t4
 t2
@@ -377,6 +382,7 @@ create view v0 (c) as select schema_name from information_schema.schemata;
 select * from v0;
 c
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema
@@ -697,11 +703,14 @@ Lock_tables_priv	select,insert,update,references
 Show_view_priv	select,insert,update,references
 Create_routine_priv	select,insert,update,references
 Alter_routine_priv	select,insert,update,references
+Profile_priv	select,insert,update,references
 max_questions	select,insert,update,references
 max_connections	select,insert,update,references
 max_user_connections	select,insert,update,references
 authentication_string	select,insert,update,references
 password_expired	select,insert,update,references
+profile_name	select,insert,update,references
+role_name	select,insert,update,references
 use test;
 create function sub1(i int) returns int
 return i+1;
@@ -879,6 +888,7 @@ INNODB_BUFFER_PAGE	TABLE_NAME	select
 INNODB_BUFFER_PAGE_LRU	TABLE_NAME	select
 INNODB_CMP_PER_INDEX	table_name	select
 INNODB_CMP_PER_INDEX_RESET	table_name	select
+INNODB_FLASH_CACHE	table_name	select
 KEY_COLUMN_USAGE	TABLE_NAME	select
 PARTITIONS	TABLE_NAME	select
 REFERENTIAL_CONSTRAINTS	TABLE_NAME	select
@@ -896,7 +906,7 @@ AND table_name not like 'ndb%' AND table_name not like 'innodb_%'
 GROUP BY TABLE_SCHEMA;
 table_schema	count(*)
 information_schema	31
-mysql	25
+mysql	28
 create table t1 (i int, j int);
 create trigger trg1 before insert on t1 for each row
 begin

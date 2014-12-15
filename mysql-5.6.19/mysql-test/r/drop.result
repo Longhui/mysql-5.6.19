@@ -47,6 +47,7 @@ create database mysqltest;
 show databases;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 mysqltest
@@ -60,6 +61,7 @@ drop database mysqltest;
 show databases;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema

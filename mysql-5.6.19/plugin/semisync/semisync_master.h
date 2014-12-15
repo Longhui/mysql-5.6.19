@@ -619,7 +619,6 @@ class ReplSemiSyncMaster
 /* System and status variables for the master component */
 extern char rpl_semi_sync_master_enabled;
 extern char rpl_semi_sync_master_status;
-extern char _ack_receiver_enabled;
 extern unsigned long rpl_semi_sync_master_clients;
 extern unsigned long rpl_semi_sync_master_timeout;
 extern unsigned long rpl_semi_sync_master_trace_level;
@@ -638,7 +637,6 @@ extern unsigned long long rpl_semi_sync_master_trx_wait_num;
 extern unsigned long long rpl_semi_sync_master_net_wait_time;
 extern unsigned long long rpl_semi_sync_master_trx_wait_time;
 extern char rpl_semi_sync_master_commit_after_ack;
-extern char rpl_semi_sync_ack_receiver_enabled;
 extern mysql_mutex_t LOCK_ordered_commit;
 extern char rpl_semi_sync_master_keepsyncrepl;
 extern char rpl_semi_sync_master_trysyncrepl;

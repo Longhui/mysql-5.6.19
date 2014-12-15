@@ -261,6 +261,7 @@ prepare stmt4 from ' show databases ';
 execute stmt4;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema

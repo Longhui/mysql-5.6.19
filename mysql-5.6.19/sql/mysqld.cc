@@ -388,9 +388,9 @@ static mysql_cond_t COND_thread_cache, COND_flush_thread_cache;
 
 /* Global variables */
 
-+/*
-+  Used with --binlog-user-ip for recording user and ip in binnry log
-+*/
+/*
+  Used with --binlog-user-ip for recording user and ip in binnry log
+*/
 my_bool opt_binlog_user_ip= 0;
 
 ulong commit_number=0, commit_group1_number=0, commit_group2_number=0;
@@ -1691,7 +1691,8 @@ static void __cdecl kill_server(int sig_ptr)
     }
   }
 #endif
-
+  
+  statistics_deinit();
   close_connections();
   if (sig != MYSQL_KILL_SIGNAL &&
       sig != 0)
@@ -5779,7 +5780,7 @@ int mysqld_main(int argc, char **argv)
   while (!ready_to_exit)
     mysql_cond_wait(&COND_thread_count, &LOCK_thread_count);
   mysql_mutex_unlock(&LOCK_thread_count);
-  statistics_deinit();
+  //statistics_deinit();
 #if defined(__WIN__) && !defined(EMBEDDED_LIBRARY)
   if (Service.IsNT() && start_mode)
     Service.Stop();
@@ -9488,6 +9489,8 @@ void refresh_status(THD *thd)
   */
   mysql_mutex_lock(&LOCK_thread_count);
   max_used_connections= get_thread_count() - delayed_insert_threads;
+  if (!output_thread_exit)
+    max_used_connections = max_used_connections - 1;
   mysql_mutex_unlock(&LOCK_thread_count);
 }
 

@@ -85,6 +85,16 @@ const TABLE_FIELD_TYPE slow_query_log_table_fields[SQLT_FIELD_COUNT] =
     { NULL, 0 }
   },
   {
+    { C_STRING_WITH_LEN("logical_reads") },
+    { C_STRING_WITH_LEN("int(11)") },
+    { NULL, 0 }
+  },
+  {
+    { C_STRING_WITH_LEN("physical_reads") },
+    { C_STRING_WITH_LEN("int(11)") },
+    { NULL, 0 }
+  },
+  {
     { C_STRING_WITH_LEN("db") },
     { C_STRING_WITH_LEN("varchar(512)") },
     { C_STRING_WITH_LEN("utf8") }

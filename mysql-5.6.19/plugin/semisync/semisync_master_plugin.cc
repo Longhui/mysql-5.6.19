@@ -228,13 +228,6 @@ static MYSQL_SYSVAR_BOOL(enabled, rpl_semi_sync_master_enabled,
   &fix_rpl_semi_sync_master_enabled,	// update
   0);
 
-static MYSQL_SYSVAR_BOOL(ack_receiver_enabled, rpl_semi_sync_ack_receiver_enabled,
-  PLUGIN_VAR_OPCMDARG,
- "Enable semi-synchronous replication master ack receiver (disabled by default). ",
-  NULL, 			// check
-  NULL,	// update
-  0);
-
 static MYSQL_SYSVAR_BOOL(commit_after_ack, rpl_semi_sync_master_commit_after_ack,
   PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
   "Enable semi-synchronous wait the sending before commit",
@@ -278,7 +271,6 @@ static MYSQL_SYSVAR_ULONG(trace_level, rpl_semi_sync_master_trace_level,
 static SYS_VAR* semi_sync_master_system_vars[]= {
   MYSQL_SYSVAR(commit_after_ack),
   MYSQL_SYSVAR(enabled),
-  MYSQL_SYSVAR(ack_receiver_enabled),
   MYSQL_SYSVAR(timeout),
   MYSQL_SYSVAR(wait_no_slave),
   MYSQL_SYSVAR(trace_level),
@@ -319,7 +311,7 @@ static void fix_rpl_semi_sync_master_enabled(MYSQL_THD thd,
   {
     if (repl_semisync.enableMaster() != 0)
       rpl_semi_sync_master_enabled = false;
-    else if (rpl_semi_sync_ack_receiver_enabled && ack_receiver.start())
+    else if (ack_receiver.start())
     {
       repl_semisync.disableMaster();
       rpl_semi_sync_master_enabled = false;
@@ -394,9 +386,6 @@ static SHOW_VAR semi_sync_master_status_vars[]= {
   {"Rpl_semi_sync_master_clients",
    (char*) &SHOW_FNAME(clients),
    SHOW_FUNC},
-  {"Rpl_semi_sync_ack_receiver_status",
-   (char *) &_ack_receiver_enabled,
-   SHOW_BOOL},
   {"Rpl_semi_sync_master_yes_tx",
    (char*) &rpl_semi_sync_master_yes_transactions,
    SHOW_LONG},

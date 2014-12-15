@@ -141,6 +141,7 @@ Catalog	Database	Table	Table_alias	Column	Column_alias	Type	Length	Max length	Is
 def	information_schema	SCHEMATA	SCHEMATA	SCHEMA_NAME	Database	253	64	18	N	1	0	8
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema
@@ -1535,14 +1536,14 @@ GET_LOCK('t', 1000)
 SET NAMES latin1;
 SELECT GET_LOCK('t',1000) AS 'óóóó';;
 SHOW PROCESSLIST;
-Id	User	Host	db	Command	Time	State	Info
-###	root	###	test	Query	###	###	SELECT GET_LOCK('t',1000) AS 'óóóó'
-###	root	###	test	Query	###	###	SHOW PROCESSLIST
+Id	User	Host	db	Command	Time	Ack_wait_time 	State	Info
+###	root	###	test	Query	###	###	System lock	SHOW PROCESSLIST
+###	root	###	test	Query	###	###	User lock	SELECT GET_LOCK('t',1000) AS 'óóóó'
 SET NAMES utf8;
 SHOW PROCESSLIST;
-Id	User	Host	db	Command	Time	State	Info
-###	root	###	test	Query	###	###	SELECT GET_LOCK('t',1000) AS 'Ã³Ã³Ã³Ã³'
-###	root	###	test	Query	###	###	SHOW PROCESSLIST
+Id	User	Host	db	Command	Time	Ack_wait_time 	State	Info
+###	root	###	test	Query	###	###	System lock	SHOW PROCESSLIST
+###	root	###	test	Query	###	###	User lock	SELECT GET_LOCK('t',1000) AS 'Ã³Ã³Ã³Ã³'
 SELECT RELEASE_LOCK('t');
 RELEASE_LOCK('t')
 1

@@ -33,11 +33,11 @@ call bug9486();
 lock tables t2 write;
 call bug9486();
 show processlist;
-Id	User	Host	db	Command	Time	State	Info
-#	root	localhost	test	Query	#	Waiting for table metadata lock	update t1, t2 set val= 1 where id1=id2
-#	root	localhost	test	Query	#	init	show processlist
-#	root	localhost	test	Sleep	#		NULL
-#	root	localhost	test	Sleep	#		NULL
+Id	User	Host	db	Command	Time	Ack_wait_time 	State	Info
+#	root	localhost	test	Query	#	0	Waiting for table metadata lock	update t1, t2 set val= 1 where id1=id2
+#	root	localhost	test	Query	#	0	init	show processlist
+#	root	localhost	test	Sleep	#	0		NULL
+#	root	localhost	test	Sleep	#	0		NULL
 unlock tables;
 drop procedure bug9486;
 drop table t1, t2;

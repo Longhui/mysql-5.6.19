@@ -4,6 +4,7 @@ drop database if exists client_test_db;
 mtr.global_suppressions                            OK
 mtr.test_suppressions                              OK
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -20,12 +21,12 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
 mysql.slave_worker_info                            OK
-mysql.slow_log
-note     : The storage engine for the table doesn't support analyze
+mysql.slow_log                                     OK
 mysql.tables_priv                                  OK
 mysql.time_zone                                    OK
 mysql.time_zone_leap_second                        OK
@@ -33,9 +34,11 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 mtr.global_suppressions                            Table is already up to date
 mtr.test_suppressions                              Table is already up to date
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -56,6 +59,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info
 note     : Table does not support optimize, doing recreate + analyze instead
@@ -66,8 +70,7 @@ status   : OK
 mysql.slave_worker_info
 note     : Table does not support optimize, doing recreate + analyze instead
 status   : OK
-mysql.slow_log
-note     : The storage engine for the table doesn't support optimize
+mysql.slow_log                                     OK
 mysql.tables_priv                                  OK
 mysql.time_zone                                    OK
 mysql.time_zone_leap_second                        OK
@@ -75,7 +78,9 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -92,12 +97,12 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
 mysql.slave_worker_info                            OK
-mysql.slow_log
-note     : The storage engine for the table doesn't support analyze
+mysql.slow_log                                     OK
 mysql.tables_priv                                  OK
 mysql.time_zone                                    OK
 mysql.time_zone_leap_second                        OK
@@ -105,7 +110,9 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 mysql.columns_priv                                 Table is already up to date
+mysql.current_user_exhaust                         Table is already up to date
 mysql.db                                           Table is already up to date
 mysql.event                                        Table is already up to date
 mysql.func                                         Table is already up to date
@@ -126,6 +133,7 @@ mysql.plugin                                       Table is already up to date
 mysql.proc                                         Table is already up to date
 mysql.procs_priv                                   Table is already up to date
 mysql.proxies_priv                                 Table is already up to date
+mysql.roles_priv                                   Table is already up to date
 mysql.servers                                      Table is already up to date
 mysql.slave_master_info
 note     : Table does not support optimize, doing recreate + analyze instead
@@ -136,8 +144,7 @@ status   : OK
 mysql.slave_worker_info
 note     : Table does not support optimize, doing recreate + analyze instead
 status   : OK
-mysql.slow_log
-note     : The storage engine for the table doesn't support optimize
+mysql.slow_log                                     Table is already up to date
 mysql.tables_priv                                  Table is already up to date
 mysql.time_zone                                    Table is already up to date
 mysql.time_zone_leap_second                        Table is already up to date
@@ -145,6 +152,7 @@ mysql.time_zone_name                               Table is already up to date
 mysql.time_zone_transition                         Table is already up to date
 mysql.time_zone_transition_type                    Table is already up to date
 mysql.user                                         Table is already up to date
+mysql.user_profiler                                Table is already up to date
 create table t1 (a int) engine=myisam;
 create view v1 as select * from t1;
 test.t1                                            OK
@@ -265,8 +273,8 @@ USE `a@b`;
 SELECT * FROM INFORMATION_SCHEMA.TRIGGERS
 WHERE TRIGGER_SCHEMA="a@b" ORDER BY trigger_name;
 TRIGGER_CATALOG	TRIGGER_SCHEMA	TRIGGER_NAME	EVENT_MANIPULATION	EVENT_OBJECT_CATALOG	EVENT_OBJECT_SCHEMA	EVENT_OBJECT_TABLE	ACTION_ORDER	ACTION_CONDITION	ACTION_STATEMENT	ACTION_ORIENTATION	ACTION_TIMING	ACTION_REFERENCE_OLD_TABLE	ACTION_REFERENCE_NEW_TABLE	ACTION_REFERENCE_OLD_ROW	ACTION_REFERENCE_NEW_ROW	CREATED	SQL_MODE	DEFINER	CHARACTER_SET_CLIENT	COLLATION_CONNECTION	DATABASE_COLLATION
-def	a@b	tr1	INSERT	def	a@b	c@d	0	NULL	SET NEW.a = 10 * NEW.a	ROW	BEFORE	NULL	NULL	OLD	NEW	NULL		root@localhost	utf8	utf8_general_ci	latin1_swedish_ci
-def	a@b	tr2	INSERT	def	a@b	t1	0	NULL	SET NEW.a = 100 * NEW.a	ROW	BEFORE	NULL	NULL	OLD	NEW	NULL		root@localhost	utf8	utf8_general_ci	latin1_swedish_ci
+def	a@b	tr1	INSERT	def	a@b	c@d	0	NULL	SET NEW.a = 10 * NEW.a	ROW	BEFORE	NULL	NULL	OLD	NEW	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
+def	a@b	tr2	INSERT	def	a@b	t1	0	NULL	SET NEW.a = 100 * NEW.a	ROW	BEFORE	NULL	NULL	OLD	NEW	NULL		root@localhost	utf8	utf8_general_ci	utf8_general_ci
 INSERT INTO `c@d` VALUES (2), (1);
 SELECT * FROM `c@d`;
 a

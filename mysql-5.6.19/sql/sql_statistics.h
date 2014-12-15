@@ -22,6 +22,7 @@ extern ulong statistics_max_sql_size;
 extern ulong statistics_max_sql_count;
 extern ulong statistics_output_cycle;
 extern ulong statistics_expire_duration;
+extern my_bool output_thread_exit;
 extern my_bool statistics_enabled;
 extern my_bool statistics_output_now;
 extern my_bool statistics_shutdown_fast;
@@ -185,6 +186,7 @@ public:
   thd->m_sql_info->exclude = TRUE
 
 class SQL_SELECT;
+void output_now(bool output);
 bool update_exclude_db_list();
 bool update_exclude_sql_list();
 void statistics_add_token(SQLInfo* info, uint token, void *yylval);

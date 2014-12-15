@@ -3922,7 +3922,7 @@ static bool fix_log(char** logname, const char* default_logname,
 static Sys_var_charptr Sys_user_list_string(
   "user_list_string", "users can't be deleted or dropped",
   PREALLOCATED READ_ONLY GLOBAL_VAR(user_list_string), CMD_LINE(REQUIRED_ARG),
-  IN_FS_CHARSET, DEFAULT("rdsadmin@localhost"), NO_MUTEX_GUARD, NOT_IN_BINLOG);
+  IN_FS_CHARSET, DEFAULT(""), NO_MUTEX_GUARD, NOT_IN_BINLOG);
 
 static void reopen_general_log(char* name)
 {
@@ -4937,12 +4937,20 @@ static Sys_var_ulong Sys_statistics_output_cycle(
       GLOBAL_VAR(statistics_output_cycle), CMD_LINE(REQUIRED_ARG),
       VALID_RANGE(1, LONG_MAX), DEFAULT(1), BLOCK_SIZE(1));
 
+static bool update_output(sys_var *self, THD *thd, enum_var_type type)
+{
+  output_now(statistics_output_now);
+  statistics_output_now = false;
+  return true;
+}
+
 static Sys_var_mybool Sys_statistics_output_now(
       "statistics_output_now",
       "output the statistics info immediately "
       "do not wait for the output cycle",
       GLOBAL_VAR(statistics_output_now),
-      CMD_LINE(OPT_ARG), DEFAULT(FALSE));
+      CMD_LINE(OPT_ARG), DEFAULT(FALSE), NO_MUTEX_GUARD, NOT_IN_BINLOG,
+      0, ON_UPDATE(update_output));
 
 static Sys_var_mybool Sys_statistics_shutdown_fast(
       "statistics_shutdown_fast",

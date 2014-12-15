@@ -9,6 +9,7 @@ CREATE DATABASE `ソ十表`;
 SELECT schema_name from information_schema.schemata where schema_name <> 'mtr';
 schema_name
 information_schema
+#bak_database
 ソ十表
 日本語
 ﾆﾎﾝｺﾞ

@@ -87,7 +87,6 @@ bool Ack_receiver::start()
       m_status= ST_DOWN;
       return function_exit(kWho, true);
     }
-    _ack_receiver_enabled= 1;
 
     (void) pthread_attr_destroy(&attr);
   }
@@ -127,8 +126,6 @@ void Ack_receiver::stop()
                       "errno(%d)", errno);
     m_pid= 0;
   }
-
-  _ack_receiver_enabled= 0;
 
   function_exit(kWho, 0);
 }

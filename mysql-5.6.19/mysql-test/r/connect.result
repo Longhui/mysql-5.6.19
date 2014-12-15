@@ -2,6 +2,7 @@ drop table if exists t1,t2;
 show tables;
 Tables_in_mysql
 columns_priv
+current_user_exhaust
 db
 event
 func
@@ -17,6 +18,7 @@ plugin
 proc
 procs_priv
 proxies_priv
+roles_priv
 servers
 slave_master_info
 slave_relay_log_info
@@ -29,6 +31,7 @@ time_zone_name
 time_zone_transition
 time_zone_transition_type
 user
+user_profiler
 show tables;
 Tables_in_test
 connect(localhost,root,z,test2,MASTER_PORT,MASTER_SOCKET);
@@ -40,6 +43,7 @@ grant ALL on *.* to test@127.0.0.1 identified by "gambling";
 show tables;
 Tables_in_mysql
 columns_priv
+current_user_exhaust
 db
 event
 func
@@ -55,6 +59,7 @@ plugin
 proc
 procs_priv
 proxies_priv
+roles_priv
 servers
 slave_master_info
 slave_relay_log_info
@@ -67,6 +72,7 @@ time_zone_name
 time_zone_transition
 time_zone_transition_type
 user
+user_profiler
 show tables;
 Tables_in_test
 connect(localhost,test,,test2,MASTER_PORT,MASTER_SOCKET);
@@ -91,6 +97,7 @@ Warning	1287	'pre-4.1 password hash' is deprecated and will be removed in a futu
 show tables;
 Tables_in_mysql
 columns_priv
+current_user_exhaust
 db
 event
 func
@@ -106,6 +113,7 @@ plugin
 proc
 procs_priv
 proxies_priv
+roles_priv
 servers
 slave_master_info
 slave_relay_log_info
@@ -118,6 +126,7 @@ time_zone_name
 time_zone_transition
 time_zone_transition_type
 user
+user_profiler
 show tables;
 Tables_in_test
 connect(localhost,test,,test2,MASTER_PORT,MASTER_SOCKET);

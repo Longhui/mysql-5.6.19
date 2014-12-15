@@ -1028,8 +1028,11 @@ bool is_forbid_deleted_user(const char *user, const char *host)
   return false;
 }
 
+#endif 
+
 bool contain_forbid_deleted_user(const char *record)
 {
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
   for (uint i = 0; i < forbid_deleted_users.elements; i++)
   {
     LEX_USER *lex_user = dynamic_element(&forbid_deleted_users, i, LEX_USER*);
@@ -1041,14 +1044,20 @@ bool contain_forbid_deleted_user(const char *record)
       }
     }
   }
+#endif
   return false;
 }
 
 bool is_forbid_users_empty()
 {
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
   return forbid_deleted_users.elements == 0;
+#else
+  return true;
+#endif
 }
 
+#ifndef NO_EMBEDDED_ACCESS_CHECKS
 /*
   Initialize structures responsible for user/db-level privilege checking and
   load privilege information for them from tables in the 'mysql' database.

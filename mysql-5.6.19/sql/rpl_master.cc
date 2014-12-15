@@ -1779,7 +1779,6 @@ end:
   thd->set_stmt_da(saved_da);
   end_io_cache(&log);
   mysql_file_close(file, MYF(MY_WME));
-
   (void) RUN_HOOK(binlog_transmit, transmit_stop, (thd, NO_FLAG));
   my_eof(thd);
   THD_STAGE_INFO(thd, stage_waiting_to_finalize_termination);

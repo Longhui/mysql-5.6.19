@@ -233,6 +233,7 @@ DROP PROCEDURE p1;
 SHOW DATABASES;
 Database
 information_schema
+#bak_database
 mtr
 mysql
 performance_schema
@@ -241,6 +242,7 @@ test
 SHOW DATABASES;
 Database
 information_schema
+#bak_database
 bug58090
 mtr
 mysql

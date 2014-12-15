@@ -91,7 +91,7 @@ Status	Duration	Messages_sent	Messages_received
 Warnings:
 Warning	1287	'SHOW PROFILE' is deprecated and will be removed in a future release. Please use Performance Schema instead
 SHOW PROFILES;
-Query_ID	Duration	Query
+Query_ID	Duration	Logical_reads	Physical_reads	Query
 Warnings:
 Warning	1287	'SHOW PROFILES' is deprecated and will be removed in a future release. Please use Performance Schema instead
 # --plugin-xyz
@@ -111,6 +111,7 @@ insert into mysql.host values(1);
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -127,6 +128,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -139,6 +141,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning	1642	Table mysql.host is not empty. It is deprecated and will be removed in a future release.
 Warning: Using a password on the command line interface can be insecure.
@@ -154,6 +157,7 @@ count(*)
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -169,6 +173,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -181,6 +186,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
@@ -191,6 +197,7 @@ drop user 'wl6443_u1'@'10.10.10.1';
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 mysql.columns_priv                                 OK
+mysql.current_user_exhaust                         OK
 mysql.db                                           OK
 mysql.event                                        OK
 mysql.func                                         OK
@@ -206,6 +213,7 @@ mysql.plugin                                       OK
 mysql.proc                                         OK
 mysql.procs_priv                                   OK
 mysql.proxies_priv                                 OK
+mysql.roles_priv                                   OK
 mysql.servers                                      OK
 mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
@@ -218,6 +226,7 @@ mysql.time_zone_name                               OK
 mysql.time_zone_transition                         OK
 mysql.time_zone_transition_type                    OK
 mysql.user                                         OK
+mysql.user_profiler                                OK
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.
 Warning: Using a password on the command line interface can be insecure.

@@ -9,6 +9,8 @@
 #include "sql_statistics.h"
 #include "sql_select.h"
 #include "sql_optimizer.h"
+#include "global_threads.h"
+#include <ctype.h>
 
 #ifdef LEX_YYSTYPE
 #undef LEX_YYSTYPE
@@ -27,12 +29,12 @@ ulong statistics_output_cycle  = 1;
 ulong statistics_expire_duration = 3;
 char* statistics_exclude_db = NULL;
 char* statistics_exclude_sql = NULL;
+my_bool output_thread_exit       = FALSE;
 my_bool statistics_output_now    = FALSE;
 my_bool statistics_shutdown_fast = FALSE;
 my_bool statistics_plugin_status = FALSE;
 
 static my_bool output_thread_running = TRUE;
-static my_bool output_thread_exit = FALSE;
 static ulong start_output_time = 0;
 static ulong end_output_time = 0;
 
@@ -56,23 +58,25 @@ static const char *sql_command[] = {
   "SQLCOM_DELETE", "SQLCOM_TRUNCATE", "SQLCOM_DROP_TABLE", "SQLCOM_DROP_INDEX", "SQLCOM_SHOW_DATABASES", "SQLCOM_SHOW_TABLES", "SQLCOM_SHOW_FIELDS",
   "SQLCOM_SHOW_KEYS", "SQLCOM_SHOW_VARIABLES", "SQLCOM_SHOW_STATUS", "SQLCOM_SHOW_ENGINE_LOGS", "SQLCOM_SHOW_ENGINE_STATUS", "SQLCOM_SHOW_ENGINE_MUTEX",
   "SQLCOM_SHOW_PROCESSLIST", "SQLCOM_SHOW_MASTER_STAT", "SQLCOM_SHOW_SLAVE_STAT", "SQLCOM_SHOW_GRANTS", "SQLCOM_SHOW_CREATE", "SQLCOM_SHOW_CHARSETS",
-  "SQLCOM_SHOW_COLLATIONS", "SQLCOM_SHOW_CREATE_DB", "SQLCOM_SHOW_TABLE_STATUS", "SQLCOM_SHOW_TRIGGERS","SQLCOM_LOAD,SQLCOM_SET_OPTION",
-  "SQLCOM_LOCK_TABLES","SQLCOM_UNLOCK_TABLES","SQLCOM_GRANT","SQLCOM_CHANGE_DB", "SQLCOM_CREATE_DB", "SQLCOM_DROP_DB", "SQLCOM_ALTER_DB",
-  "SQLCOM_REPAIR", "SQLCOM_REPLACE", "SQLCOM_REPLACE_SELECT","SQLCOM_CREATE_FUNCTION", "SQLCOM_DROP_FUNCTION", "SQLCOM_REVOKE","SQLCOM_OPTIMIZE", 
-  "SQLCOM_CHECK","SQLCOM_ASSIGN_TO_KEYCACHE", "SQLCOM_PRELOAD_KEYS","SQLCOM_FLUSH", "SQLCOM_KILL", "SQLCOM_ANALYZE", "SQLCOM_ROLLBACK", 
-  "SQLCOM_ROLLBACK_TO_SAVEPOINT","SQLCOM_COMMIT", "SQLCOM_SAVEPOINT", "SQLCOM_RELEASE_SAVEPOINT", "SQLCOM_SLAVE_START", "SQLCOM_SLAVE_STOP",
-  "SQLCOM_BEGIN", "SQLCOM_CHANGE_MASTER","SQLCOM_RENAME_TABLE","SQLCOM_RESET", "SQLCOM_PURGE", "SQLCOM_PURGE_BEFORE", "SQLCOM_SHOW_BINLOGS",
-  "SQLCOM_SHOW_OPEN_TABLES","SQLCOM_HA_OPEN", "SQLCOM_HA_CLOSE", "SQLCOM_HA_READ","SQLCOM_SHOW_SLAVE_HOSTS", "SQLCOM_DELETE_MULTI", "SQLCOM_UPDATE_MULTI",
-  "SQLCOM_SHOW_BINLOG_EVENTS", "SQLCOM_DO","SQLCOM_SHOW_WARNS", "SQLCOM_EMPTY_QUERY", "SQLCOM_SHOW_ERRORS", "SQLCOM_SHOW_STORAGE_ENGINES", "SQLCOM_SHOW_PRIVILEGES",
-  "SQLCOM_HELP", "SQLCOM_CREATE_USER", "SQLCOM_DROP_USER", "SQLCOM_RENAME_USER","SQLCOM_REVOKE_ALL", "SQLCOM_CHECKSUM","SQLCOM_CREATE_PROCEDURE",
-  "SQLCOM_CREATE_SPFUNCTION", "SQLCOM_CALL", "SQLCOM_DROP_PROCEDURE", "SQLCOM_ALTER_PROCEDURE","SQLCOM_ALTER_FUNCTION","SQLCOM_SHOW_CREATE_PROC", 
-  "SQLCOM_SHOW_CREATE_FUNC", "SQLCOM_SHOW_STATUS_PROC", "SQLCOM_SHOW_STATUS_FUNC","SQLCOM_PREPARE", "SQLCOM_EXECUTE", "SQLCOM_DEALLOCATE_PREPARE",
-  "SQLCOM_CREATE_VIEW", "SQLCOM_DROP_VIEW","SQLCOM_CREATE_TRIGGER", "SQLCOM_DROP_TRIGGER","SQLCOM_XA_START", "SQLCOM_XA_END", "SQLCOM_XA_PREPARE",
-  "SQLCOM_XA_COMMIT", "SQLCOM_XA_ROLLBACK", "SQLCOM_XA_RECOVER", "SQLCOM_SHOW_PROC_CODE", "SQLCOM_SHOW_FUNC_CODE","SQLCOM_ALTER_TABLESPACE",
-  "SQLCOM_INSTALL_PLUGIN", "SQLCOM_UNINSTALL_PLUGIN","SQLCOM_BINLOG_BASE64_EVENT","SQLCOM_SHOW_PLUGINS", "SQLCOM_CREATE_SERVER", "SQLCOM_DROP_SERVER", 
-  "SQLCOM_ALTER_SERVER", "SQLCOM_CREATE_EVENT", "SQLCOM_ALTER_EVENT", "SQLCOM_DROP_EVENT","SQLCOM_SHOW_CREATE_EVENT", "SQLCOM_SHOW_EVENTS",
-  "SQLCOM_SHOW_CREATE_TRIGGER", "SQLCOM_ALTER_DB_UPGRADE", "SQLCOM_SHOW_PROFILE", "SQLCOM_SHOW_PROFILES","SQLCOM_SIGNAL", "SQLCOM_RESIGNAL",
-  "SQLCOM_SHOW_RELAYLOG_EVENTS", "SQLCOM_GET_DIAGNOSTICS", "SQLCOM_ALTER_USER", "SQLCOM_SHOW_SQL_STATS", "SQLCOM_SHOW_TABLE_STATS", "SQLCOM_SHOW_STATISTICS_STATUS"
+  "SQLCOM_SHOW_COLLATIONS", "SQLCOM_SHOW_CREATE_DB", "SQLCOM_SHOW_TABLE_STATUS", "SQLCOM_SHOW_TRIGGERS", "SQLCOM_LOAD,SQLCOM_SET_OPTION",
+  "SQLCOM_LOCK_TABLES", "SQLCOM_UNLOCK_TABLES", "SQLCOM_GRANT", "SQLCOM_CHANGE_DB", "SQLCOM_CREATE_DB", "SQLCOM_DROP_DB", "SQLCOM_ALTER_DB",
+  "SQLCOM_REPAIR", "SQLCOM_REPLACE", "SQLCOM_REPLACE_SELECT", "SQLCOM_CREATE_FUNCTION", "SQLCOM_DROP_FUNCTION", "SQLCOM_REVOKE,SQLCOM_OPTIMIZE", "SQLCOM_CHECK",
+  "SQLCOM_ASSIGN_TO_KEYCACHE", "SQLCOM_PRELOAD_KEYS", "SQLCOM_FLUSH", "SQLCOM_KILL", "SQLCOM_ANALYZE", "SQLCOM_ROLLBACK", "SQLCOM_ROLLBACK_TO_SAVEPOINT",
+  "SQLCOM_COMMIT", "SQLCOM_SAVEPOINT", "SQLCOM_RELEASE_SAVEPOINT", "SQLCOM_SLAVE_START", "SQLCOM_SLAVE_STOP", "SQLCOM_BEGIN", "SQLCOM_CHANGE_MASTER",
+  "SQLCOM_RENAME_TABLE", "SQLCOM_RESET", "SQLCOM_PURGE", "SQLCOM_PURGE_BEFORE", "SQLCOM_SHOW_BINLOGS", "SQLCOM_SHOW_OPEN_TABLES",
+  "SQLCOM_HA_OPEN", "SQLCOM_HA_CLOSE", "SQLCOM_HA_READ", "SQLCOM_SHOW_SLAVE_HOSTS", "SQLCOM_DELETE_MULTI", "SQLCOM_UPDATE_MULTI", "SQLCOM_SHOW_BINLOG_EVENTS", 
+  "SQLCOM_DO", "SQLCOM_SHOW_WARNS", "SQLCOM_EMPTY_QUERY", "SQLCOM_SHOW_ERRORS", "SQLCOM_SHOW_STORAGE_ENGINES", "SQLCOM_SHOW_PRIVILEGES",
+  "SQLCOM_HELP", "SQLCOM_CREATE_USER", "SQLCOM_DROP_USER", "SQLCOM_RENAME_USER", "SQLCOM_REVOKE_ALL", "SQLCOM_CHECKSUM", "SQLCOM_CREATE_PROCEDURE", 
+  "SQLCOM_CREATE_SPFUNCTION", "SQLCOM_CALL", "SQLCOM_DROP_PROCEDURE", "SQLCOM_ALTER_PROCEDURE", "SQLCOM_ALTER_FUNCTION", "SQLCOM_SHOW_CREATE_PROC", 
+  "SQLCOM_SHOW_CREATE_FUNC", "SQLCOM_SHOW_STATUS_PROC", "SQLCOM_SHOW_STATUS_FUNC", "SQLCOM_PREPARE", "SQLCOM_EXECUTE", "SQLCOM_DEALLOCATE_PREPARE",
+  "SQLCOM_CREATE_VIEW", "SQLCOM_DROP_VIEW", "SQLCOM_CREATE_TRIGGER", "SQLCOM_DROP_TRIGGER", "SQLCOM_XA_START", "SQLCOM_XA_END", "SQLCOM_XA_PREPARE",
+  "SQLCOM_XA_COMMIT", "SQLCOM_XA_ROLLBACK", "SQLCOM_XA_RECOVER", "SQLCOM_SHOW_PROC_CODE", "SQLCOM_SHOW_FUNC_CODE", "SQLCOM_ALTER_TABLESPACE",
+  "SQLCOM_INSTALL_PLUGIN", "SQLCOM_UNINSTALL_PLUGIN", "SQLCOM_BINLOG_BASE64_EVENT", "SQLCOM_SHOW_PLUGINS", "SQLCOM_CREATE_SERVER", "SQLCOM_DROP_SERVER", 
+  "SQLCOM_ALTER_SERVER", "SQLCOM_CREATE_EVENT", "SQLCOM_ALTER_EVENT", "SQLCOM_DROP_EVENT", "SQLCOM_SHOW_CREATE_EVENT", "SQLCOM_SHOW_EVENTS",
+  "SQLCOM_SHOW_CREATE_TRIGGER", "SQLCOM_ALTER_DB_UPGRADE", "SQLCOM_SHOW_PROFILE", "SQLCOM_SHOW_PROFILES", "SQLCOM_SIGNAL", "SQLCOM_RESIGNAL",
+  "SQLCOM_SHOW_RELAYLOG_EVENTS", "SQLCOM_GET_DIAGNOSTICS", "SQLCOM_ALTER_USER", "SQLCOM_CREATE_PROFILE", "SQLCOM_ALTER_PROFILE", "SQLCOM_DROP_PROFILE", 
+  "SQLCOM_ALTER_USER_PROFILE", "SQLCOM_CREATE_ROLE", "SQLCOM_DROP_ROLE", "SQLCOM_GRANT_ROLE", "SQLCOM_REVOKE_ROLE", "SQLCOM_SHOW_SQL_STATS", 
+  "SQLCOM_SHOW_TABLE_STATS", "SQLCOM_SHOW_STATISTICS_STATUS"
 };
 
 /* use for sort */
@@ -206,13 +210,9 @@ TableStats::TableStats(const TableInfo &info)
   }
 }
 
-static void output_now(
-  THD *thd __attribute__((unused)),
-  struct st_mysql_sys_var* var __attribute__((unused)),
-  void* var_ptr __attribute__((unused)),
-  const void *save)
+void output_now(bool output)
 {
-  if (*(bool*)save)
+  if (output)
   {
     mysql_cond_signal(&stat_output_cond);
   }
@@ -1002,6 +1002,7 @@ static void store_sql_stats(THD *thd)
   {
     Statistics *s = statistics_array.array[i];
     if (s == NULL) continue;
+    memset(buffer, 0, MAX_SQL_TEXT_SIZE);
     table->field[0]->store(start_output_time, TRUE);
     table->field[1]->store(end_output_time, FALSE);
     get_sql_text(buffer, s);
@@ -1124,12 +1125,16 @@ static void store_table_stats(THD *thd)
 pthread_handler_t statistics_output_thread(void *arg)
 {
   THD *thd;
+  bool thd_added = false;
   my_thread_init();
   if(! (thd = new THD)) return NULL;
   thd->variables.option_bits &= ~OPTION_BIN_LOG;
   thd->thread_stack = (char*)&thd;
   thd->store_globals();
-
+ 
+  add_global_thread(thd);
+  thd_added = true;
+  thd->thread_id= thd->variables.pseudo_thread_id= thread_id++;
   while(output_thread_running)
   {
     if (statistics_plugin_status)
@@ -1165,10 +1170,14 @@ pthread_handler_t statistics_output_thread(void *arg)
       my_sleep(500000);
     }
   }
+  if (thd_added)
+    remove_global_thread(thd);
   delete thd;
   my_pthread_setspecific_ptr(THR_THD, 0);
   my_pthread_setspecific_ptr(THR_MALLOC, 0);
   output_thread_exit = TRUE;
+  my_thread_end();
+  pthread_exit(0);
   return NULL;
 }
 
@@ -1416,17 +1425,19 @@ void statistics_save_index(JOIN *join)
 
 void statistics_save_index(THD *thd,  TABLE *table ,SQL_SELECT *select)
 {
-  DBUG_ASSERT(select && select->quick && table);
-  char buffer[512] = {0};
-  INDEX_INFO *index = (INDEX_INFO *)my_malloc(sizeof(INDEX_INFO),MYF(MY_WME));
-  StringBuffer<512> str_key(system_charset_info);
-  StringBuffer<512> str_key_len(system_charset_info);
-  select->quick->add_keys_and_lengths(&str_key, &str_key_len);
-  sprintf(buffer, "%s.%s", table->alias, str_key.c_ptr());
-  index->index_name.str = my_strdup(buffer, MYF(MY_WME));
-  index->index_name.length = strlen(buffer);
-  index->index_reads = 1;
-  thd->m_sql_info->index_queue.push_back(index);
+  if (select && select->quick)
+  {
+    char buffer[512] = {0};
+    INDEX_INFO *index = (INDEX_INFO *)my_malloc(sizeof(INDEX_INFO),MYF(MY_WME));
+    StringBuffer<512> str_key(system_charset_info);
+    StringBuffer<512> str_key_len(system_charset_info);
+    select->quick->add_keys_and_lengths(&str_key, &str_key_len);
+    sprintf(buffer, "%s.%s", table->alias, str_key.c_ptr());
+    index->index_name.str = my_strdup(buffer, MYF(MY_WME));
+    index->index_name.length = strlen(buffer);
+    index->index_reads = 1;
+    thd->m_sql_info->index_queue.push_back(index);
+  }
 }
 
 int statistics_init(void)

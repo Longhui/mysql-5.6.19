@@ -2146,9 +2146,9 @@ void mysqld_list_processes(THD *thd,const char *user, bool verbose)
     else
       protocol->store_null();
     if (thd_info->rpl_wait_begin_usec)
-      protocol->store_long (my_micro_time() - thd_info->rpl_wait_begin_usec);
+      protocol->store_longlong(my_micro_time() - thd_info->rpl_wait_begin_usec, FALSE);
     else
-      protocol->store_long (0);
+      protocol->store_longlong(0, FALSE);
     protocol->store(thd_info->state_info, system_charset_info);
     protocol->store(thd_info->query_string.str(),
                     thd_info->query_string.charset());

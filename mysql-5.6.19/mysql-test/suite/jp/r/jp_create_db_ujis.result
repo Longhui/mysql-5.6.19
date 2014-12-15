@@ -9,6 +9,7 @@ CREATE DATABASE `νάνένή`;
 SELECT schema_name from information_schema.schemata where schema_name <> 'mtr';
 schema_name
 information_schema
+#bak_database
 ΖόΛάΈμ
 νάνένή
 ΖΞέΊή

@@ -243,11 +243,11 @@ ALTER TABLE slow_log
 ALTER TABLE slow_log
   ADD logical_reads INTEGER DEFAULT 0 NOT NULL AFTER rows_examined;
 ALTER TABLE slow_log
-  MODIFY logical_reads INTEGER  NOT NULL;
+  MODIFY logical_reads INT(11)  NOT NULL;
 ALTER TABLE slow_log
   ADD physical_reads INTEGER DEFAULT 0 NOT NULL AFTER logical_reads;
 ALTER TABLE slow_log
-  MODIFY physical_reads INTEGER NOT NULL;
+  MODIFY physical_reads INT(11) NOT NULL;
 SET GLOBAL slow_query_log = @old_log_state;
 
 ALTER TABLE plugin

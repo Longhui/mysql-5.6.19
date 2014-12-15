@@ -85,7 +85,7 @@ public:
   bool init()
   {
     setTraceLevel(rpl_semi_sync_master_trace_level);
-    if (rpl_semi_sync_master_enabled && rpl_semi_sync_ack_receiver_enabled)
+    if (rpl_semi_sync_master_enabled)
       return start();
     return false;
   }
