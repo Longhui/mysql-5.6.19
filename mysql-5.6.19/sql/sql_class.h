@@ -551,6 +551,7 @@ typedef struct system_variables
   my_bool binlog_rows_query_log_events;
 
   double long_query_time_double;
+  ulong  long_query_io_ulong;
 
   my_bool expand_fast_index_creation;
 
@@ -3489,7 +3490,7 @@ public:
   {
     ulonglong end_utime_of_query= current_utime();
     if ((end_utime_of_query > utime_after_lock + variables.long_query_time) ||
-      (m_logical_reads > long_query_io_ulong))
+      (m_logical_reads > variables.long_query_io_ulong))
       server_status|= SERVER_QUERY_WAS_SLOW;
   }
   inline ulonglong found_rows(void)

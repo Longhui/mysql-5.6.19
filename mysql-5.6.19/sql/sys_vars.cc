@@ -1649,7 +1649,7 @@ static Sys_var_ulong Sys_long_query_io(
        "long_query_io",
        "Log all queries that have taken more than long_query_io "
        "to execute to file. The argument will be treated as a decimal value ",
-       GLOBAL_VAR(long_query_io_ulong), CMD_LINE(REQUIRED_ARG),
+       SESSION_VAR(long_query_io_ulong), CMD_LINE(REQUIRED_ARG),
        VALID_RANGE(0, ULONG_MAX), DEFAULT(100), BLOCK_SIZE(1));
 
 static bool fix_low_prio_updates(sys_var *self, THD *thd, enum_var_type type)
@@ -4046,7 +4046,7 @@ static Sys_var_ulong Sys_slow_query_type(
        "used. Must be enabled to activate other slow log options",
        GLOBAL_VAR(slow_query_type), CMD_LINE(OPT_ARG),
        VALID_RANGE(0, 3), DEFAULT(0), BLOCK_SIZE(1), NO_MUTEX_GUARD, NOT_IN_BINLOG, ON_CHECK(0),
-       ON_UPDATE(update_slow_query_type), DEPRECATED("'@@slow_query_type'"));
+       ON_UPDATE(update_slow_query_type));
 
 static Sys_var_mybool Sys_slow_query_log(
        "slow_query_log",

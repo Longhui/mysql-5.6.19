@@ -1,0 +1,177 @@
+drop database if exists role;
+create database role;
+use role;
+create table role(id int, role varchar(64))engine=innodb;
+drop database role;
+drop database if exists role_test;
+create database role_test;
+use role_test;
+create table t1(id int, a varchar(128))engine=innodb;
+"======================== global role privileges test ======================="
+truncate table t1
+insert into t1 values(1,'aaaaaaaa');
+select * from t1;
+id	a
+1	aaaaaaaa
+grant all on *.* to u1@'localhost' with grant option;
+use mysql;
+select user,host,role_name from user where user='u1' and host='localhost';
+user	host	role_name
+u1	localhost	
+select * from roles_priv;
+role_name	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Profile_priv
+create role r1;
+select * from roles_priv where role_name='r1';
+role_name	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Profile_priv
+r1	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N
+use role_test;
+select * from t1;
+id	a
+1	aaaaaaaa
+grant Role r1 to u1@'localhost';
+flush privileges;
+select role_name from mysql.user where user='u1' and host='localhost';
+role_name
+r1
+use role_test;
+ERROR 42000: Access denied for user 'u1'@'localhost' to database 'role_test'
+alter role r1 add select on *.*;
+select * from mysql.roles_priv;
+role_name	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Profile_priv
+r1	Y	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N
+flush privileges;
+use role_test;
+select * from t1;
+id	a
+1	aaaaaaaa
+insert into t1 values(2,'bbbbbbbb');
+ERROR 42000: INSERT command denied to user 'u1'@'localhost' for table 't1'
+alter role r1 drop select on *.*;
+select * from mysql.roles_priv;
+role_name	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Profile_priv
+r1	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N
+flush privileges;
+use role_test;
+ERROR 42000: Access denied for user 'u1'@'localhost' to database 'role_test'
+use role_test;
+truncate table t1;
+drop user u1@'localhost';
+drop role r1;
+"============================= database privileges test =========================="
+use role_test
+truncate table t1;
+insert into t1 values(1,'ccccccccccccc');
+grant all on role_test.* to u1@'localhost' with grant option;
+select * from mysql.user where user='u1' and host='localhost';
+Host	User	Password	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Profile_priv	ssl_type	ssl_cipher	x509_issuer	x509_subject	max_questions	max_updates	max_connections	max_user_connections	plugin	authentication_string	password_expired	profile_name	role_name
+localhost	u1		N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N					0	0	0	0	mysql_native_password		N		
+select * from mysql.db where user='u1' and host='localhost';
+Host	Db	User	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Create_tmp_table_priv	Lock_tables_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Execute_priv	Event_priv	Trigger_priv
+localhost	role_test	u1	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y
+alter role r1 add select on role_test.*;
+flush privileges;
+select * from mysql.roles_priv where role_name='r1';
+role_name	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Profile_priv
+r1	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N
+select * from mysql.db where db='role_test' and user='r1';
+Host	Db	User	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Create_tmp_table_priv	Lock_tables_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Execute_priv	Event_priv	Trigger_priv
+@@ROLE@@	role_test	r1	Y	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N	N
+use role_test;
+insert into t1 values(2,'dddddddddddddddd');
+grant role r1 to u1@localhost;
+flush privileges;
+use role_test;
+insert into t1 values(3, 'eeeeeeeeeeeeeee');
+ERROR 42000: INSERT command denied to user 'u1'@'localhost' for table 't1'
+alter role r1 add insert on role_test.*;
+flush privileges;
+use role_test;
+insert into t1 values(4, 'ffffffffffffffff');
+alter role r1 drop insert on role_test.*;
+use role_test;
+insert into t1 values(5, 'ggggggggggggggggg');
+ERROR 42000: INSERT command denied to user 'u1'@'localhost' for table 't1'
+use role_test;
+truncate table t1;
+drop user u1@'localhost';
+drop role r1;
+"=========================== table privileges test ============================"
+use role_test
+truncate table t1;
+grant all on role_test.t1 to u1@'localhost' with grant option;
+alter role r1 add all on role_test.t1;
+use role_test;
+insert into t1 values(6, 'hhhhhhhhhhhhhhhhhhhhh');
+grant role r1 to u1@'localhost';
+alter role r1 drop insert on role_test.t1;
+flush privileges;
+use role_test;
+insert into t1 values(7, 'iiiiiiiiiiiiiiiiiiiiii');
+ERROR 42000: INSERT command denied to user 'u1'@'localhost' for table 't1'
+alter role r1 add insert on role_test.t1;
+flush privileges;
+use role_test;
+insert into t1 values(8,'jjjjjjjjjjjjjjjjjjjjjjj');
+use role_test;
+truncate table t1;
+drop role r1;
+drop user u1@'localhost';
+"====================== column privileges test =================="
+use role_test
+grant insert,select,update(a) on role_test.t1 to u1@'localhost' with grant option;
+alter role r1 add insert,select,update(a) on role_test.t1;
+use role_test;
+insert into t1 values(9,'kkkkkkkkkkkkkkkkkkkkkkk');
+alter role r1 drop update(a) on role_test.t1;
+grant role r1 to u1@'localhost';
+flush privileges;
+use role_test;
+update t1 set a='lllllllllllllllllllllllll' where id=9;
+ERROR 42000: UPDATE command denied to user 'u1'@'localhost' for table 't1'
+alter role r1 add update (a) on role_test.t1;
+flush privileges;
+drop role r1;
+drop user u1@'localhost';
+"=========================== drop role test ============================"
+connection default
+grant all on *.* to u1@'localhost' with grant option;
+select role_name from mysql.user where user='u1' and host='localhost';
+role_name
+
+alter role r1 add select on *.*;
+use role_test;
+insert into t1 values(10,'mmmmmmmmmmmmmmmmmmmmmmmm');
+grant role r1 to u1@'localhost';
+select role_name from mysql.user where user='u1' and host='localhost';
+role_name
+r1
+flush privileges;
+select * from mysql.user where user='u1';
+Host	User	Password	Select_priv	Insert_priv	Update_priv	Delete_priv	Create_priv	Drop_priv	Reload_priv	Shutdown_priv	Process_priv	File_priv	Grant_priv	References_priv	Index_priv	Alter_priv	Show_db_priv	Super_priv	Create_tmp_table_priv	Lock_tables_priv	Execute_priv	Repl_slave_priv	Repl_client_priv	Create_view_priv	Show_view_priv	Create_routine_priv	Alter_routine_priv	Create_user_priv	Event_priv	Trigger_priv	Create_tablespace_priv	Profile_priv	ssl_type	ssl_cipher	x509_issuer	x509_subject	max_questions	max_updates	max_connections	max_user_connections	plugin	authentication_string	password_expired	profile_name	role_name
+localhost	u1		Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y	Y					0	0	0	0	mysql_native_password		N		r1
+use role_test;
+insert into t1 values(11, 'nnnnnnnnnnnnnnnnnnnnnn');
+ERROR 42000: INSERT command denied to user 'u1'@'localhost' for table 't1'
+drop role r1;
+select role_name from mysql.user where user='u1' and host='localhost';
+role_name
+
+flush privileges;
+use role_test;
+insert into t1 values(12,'oooooooooooooooooooo');
+drop user u1@'localhost';
+drop database role_test;
+"=========================show grants test ============================"
+connection default
+grant all on *.* to u1@'localhost' with grant option;
+alter role r1 add all on *.*;
+show grants for u1@'localhost';
+Grants for u1@localhost
+GRANT ALL PRIVILEGES ON *.* TO 'u1'@'localhost' WITH GRANT OPTION
+grant role r1 to u1@'localhost';
+show grants for u1@'localhost';
+Grants for u1@localhost
+GRANT ROLE r1 TO 'u1'@'localhost'
+GRANT ALL PRIVILEGES ON *.* TO 'u1'@'localhost' WITH GRANT OPTION
+drop user u1@'localhost';
+drop role r1;

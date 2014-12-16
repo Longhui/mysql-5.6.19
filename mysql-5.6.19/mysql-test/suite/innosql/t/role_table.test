@@ -1,0 +1,249 @@
+#test role for a keyword
+--disable_warnings
+drop database if exists role;
+--enable_warnings
+
+create database role;
+use role;
+
+create table role(id int, role varchar(64))engine=innodb;
+
+drop database role;
+
+--disable_warnings
+drop database if exists role_test;
+--enable_warnings
+
+#create the database and the t1 for testting
+create database role_test;
+use role_test;
+create table t1(id int, a varchar(128))engine=innodb;
+
+#test global role privileges
+echo "======================== global role privileges test ======================="
+truncate table t1;
+insert into t1 values(1,'aaaaaaaa');
+select * from t1;
+grant all on *.* to u1@'localhost' with grant option;
+
+use mysql;
+select user,host,role_name from user where user='u1' and host='localhost';
+
+select * from roles_priv;
+create role r1;
+select * from roles_priv where role_name='r1';
+
+connect (con1, localhost, u1,,);
+connection con1;
+use role_test;
+select * from t1;
+connection default;
+
+grant Role r1 to u1@'localhost';
+flush privileges;
+select role_name from mysql.user where user='u1' and host='localhost';
+
+#we must remove the con1 from the connect pool and re-create it
+#role table must be re-connect
+disconnect con1;
+connect (con1, localhost, u1,,);
+connection con1;
+--error ER_DBACCESS_DENIED_ERROR
+use role_test;
+
+connection default;
+alter role r1 add select on *.*;
+select * from mysql.roles_priv;
+flush privileges;
+
+disconnect con1;
+connect (con1, localhost, u1,,);
+connection con1;
+use role_test;
+select * from t1;
+--error ER_TABLEACCESS_DENIED_ERROR
+insert into t1 values(2,'bbbbbbbb');
+
+connection default;
+alter role r1 drop select on *.*;
+select * from mysql.roles_priv;
+flush privileges;
+
+disconnect con1;
+connect (con1, localhost, u1,,);
+connection con1;
+--error ER_DBACCESS_DENIED_ERROR
+use role_test;
+disconnect con1;
+
+connection default;
+use role_test;
+truncate table t1;
+drop user u1@'localhost';
+drop role r1;
+
+#test role table for database privileges
+echo "============================= database privileges test =========================="
+use role_test;
+truncate table t1;
+insert into t1 values(1,'ccccccccccccc');
+grant all on role_test.* to u1@'localhost' with grant option;
+select * from mysql.user where user='u1' and host='localhost';
+select * from mysql.db where user='u1' and host='localhost';
+alter role r1 add select on role_test.*;
+flush privileges;
+select * from mysql.roles_priv where role_name='r1';
+select * from mysql.db where db='role_test' and user='r1';
+
+connect (con1, localhost, u1,,);
+connection con1;
+use role_test;
+insert into t1 values(2,'dddddddddddddddd');
+connection default;
+grant role r1 to u1@localhost;
+flush privileges;
+disconnect con1;
+
+connect (con1, localhost, u1,,);
+connection con1;
+use role_test;
+--error ER_TABLEACCESS_DENIED_ERROR
+insert into t1 values(3, 'eeeeeeeeeeeeeee');
+connection default;
+alter role r1 add insert on role_test.*;
+flush privileges;
+disconnect con1;
+
+connect(con1, localhost, u1,,);
+connection con1;
+use role_test;
+insert into t1 values(4, 'ffffffffffffffff');
+connection default;
+alter role r1 drop insert on role_test.*;
+disconnect con1;
+
+connect(con1, localhost, u1,,);
+connection con1;
+use role_test;
+--error ER_TABLEACCESS_DENIED_ERROR
+insert into t1 values(5, 'ggggggggggggggggg');
+disconnect con1;
+connection default;
+use role_test;
+truncate table t1;
+drop user u1@'localhost';
+drop role r1;
+
+echo "=========================== table privileges test ============================"
+use role_test;
+truncate table t1;
+grant all on role_test.t1 to u1@'localhost' with grant option;
+alter role r1 add all on role_test.t1;
+connect(con1, localhost, u1,,);
+connection con1;
+use role_test;
+insert into t1 values(6, 'hhhhhhhhhhhhhhhhhhhhh');
+
+connection default;
+grant role r1 to u1@'localhost';
+alter role r1 drop insert on role_test.t1;
+flush privileges;
+
+disconnect con1;
+connect(con1, localhost, u1,,);
+connection con1;
+use role_test;
+--error ER_TABLEACCESS_DENIED_ERROR
+insert into t1 values(7, 'iiiiiiiiiiiiiiiiiiiiii');
+connection default;
+alter role r1 add insert on role_test.t1;
+flush privileges;
+
+disconnect con1;
+connect(con1, localhost,u1,,);
+connection con1;
+use role_test;
+insert into t1 values(8,'jjjjjjjjjjjjjjjjjjjjjjj');
+disconnect con1;
+connection default;
+use role_test;
+truncate table t1;
+drop role r1;
+drop user u1@'localhost';
+
+echo "====================== column privileges test =================="
+use role_test;
+grant insert,select,update(a) on role_test.t1 to u1@'localhost' with grant option;
+alter role r1 add insert,select,update(a) on role_test.t1;
+connect(con1, localhost, u1,,);
+connection con1;
+use role_test;
+insert into t1 values(9,'kkkkkkkkkkkkkkkkkkkkkkk');
+connection default;
+alter role r1 drop update(a) on role_test.t1;
+grant role r1 to u1@'localhost';
+flush privileges;
+
+disconnect con1;
+connect(con1,localhost,u1,,);
+connection con1;
+use role_test;
+--error ER_TABLEACCESS_DENIED_ERROR
+update t1 set a='lllllllllllllllllllllllll' where id=9;
+connection default;
+alter role r1 add update (a) on role_test.t1;
+flush privileges;
+
+disconnect con1;
+connection default;
+drop role r1;
+drop user u1@'localhost';
+
+#drop role test
+echo "=========================== drop role test ============================"
+connection default;
+grant all on *.* to u1@'localhost' with grant option;
+select role_name from mysql.user where user='u1' and host='localhost';
+alter role r1 add select on *.*;
+connect(con1, localhost, u1,,);
+connection con1;
+use role_test;
+insert into t1 values(10,'mmmmmmmmmmmmmmmmmmmmmmmm');
+connection default;
+grant role r1 to u1@'localhost';
+select role_name from mysql.user where user='u1' and host='localhost';
+flush privileges;
+
+select * from mysql.user where user='u1';
+disconnect con1;
+connect(con1, localhost, u1,,);
+connection con1;
+use role_test;
+--error ER_TABLEACCESS_DENIED_ERROR
+insert into t1 values(11, 'nnnnnnnnnnnnnnnnnnnnnn');
+connection default;
+drop role r1;
+select role_name from mysql.user where user='u1' and host='localhost';
+flush privileges;
+
+disconnect con1;
+connect(con1, localhost,u1,,);
+connection con1;
+use role_test;
+insert into t1 values(12,'oooooooooooooooooooo');
+disconnect con1;
+connection default;
+drop user u1@'localhost';
+
+drop database role_test;
+
+#show grants test
+echo "=========================show grants test ============================"
+connection default;
+grant all on *.* to u1@'localhost' with grant option;
+alter role r1 add all on *.*;
+show grants for u1@'localhost';
+grant role r1 to u1@'localhost';
+show grants for u1@'localhost';
+drop user u1@'localhost';
+drop role r1;

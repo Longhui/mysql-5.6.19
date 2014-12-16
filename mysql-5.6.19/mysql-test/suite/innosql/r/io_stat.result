@@ -1,0 +1,97 @@
+set @save_slow_query_log= @@global.slow_query_log;
+set @save_slow_query_type= @@global.slow_query_type;
+set @save_long_query_time= @@session.long_query_time;
+set @save_long_query_io= @@session.long_query_io;
+set @save_log_output= @@log_output;
+select @save_slow_query_log,@save_slow_query_type;
+@save_slow_query_log	@save_slow_query_type
+1	1
+set global slow_query_log=0;
+set global slow_query_type=0;
+show variables like 'slow_query_log';
+Variable_name	Value
+slow_query_log	OFF
+show variables like 'slow_query_type';
+Variable_name	Value
+slow_query_type	0
+set global slow_query_log=1;
+show variables like 'slow_query_log';
+Variable_name	Value
+slow_query_log	ON
+show variables like 'slow_query_type';
+Variable_name	Value
+slow_query_type	1
+set global slow_query_type=0;
+show variables like 'slow_query_log';
+Variable_name	Value
+slow_query_log	OFF
+show variables like 'slow_query_type';
+Variable_name	Value
+slow_query_type	0
+set global slow_query_type=1;
+show variables like 'slow_query_log';
+Variable_name	Value
+slow_query_log	ON
+show variables like 'slow_query_type';
+Variable_name	Value
+slow_query_type	1
+set global slow_query_type=2;
+show variables like 'slow_query_log';
+Variable_name	Value
+slow_query_log	OFF
+show variables like 'slow_query_type';
+Variable_name	Value
+slow_query_type	2
+set global slow_query_type=3;
+show variables like 'slow_query_log';
+Variable_name	Value
+slow_query_log	ON
+show variables like 'slow_query_type';
+Variable_name	Value
+slow_query_type	3
+use mysql;
+set global log_output='table';
+truncate table slow_log;
+select * from slow_log;
+start_time	user_host	query_time	lock_time	rows_sent	rows_examined	logical_reads	physical_reads	db	last_insert_id	insert_id	server_id	sql_text	thread_id
+set global slow_query_type=2;
+set long_query_io=1;
+drop database if exists iostat;
+create database iostat;
+use iostat;
+drop table if exists t1;
+create table t1(id int, a varchar(64))engine=innodb;
+flush logs;
+select * from mysql.slow_log;
+start_time	user_host	query_time	lock_time	rows_sent	rows_examined	logical_reads	physical_reads	db	last_insert_id	insert_id	server_id	sql_text	thread_id
+TIMESTAMP	USER_HOST	QUERY_TIME	LOCK_TIME	0	0	LOGICAL_READS	PHYSICAL_READS	iostat	0	0	1	create table t1(id int, a varchar(64))engine=innodb	3
+drop database iostat;
+show variables like 'log_output';
+Variable_name	Value
+log_output	TABLE
+show variables like 'slow_query_type';
+Variable_name	Value
+slow_query_type	2
+show variables like 'long_query_io';
+Variable_name	Value
+long_query_io	1
+set @@global.slow_query_log= @save_slow_query_log;
+set @@global.slow_query_type= @save_slow_query_type;
+set @@session.long_query_time= @save_long_query_time;
+set @@session.long_query_io= @save_long_query_io;
+set @@global.log_output= @save_log_output;
+set @save_profiling= @@session.profiling;
+set @save_profiling_history_size= @@session.profiling_history_size;
+show profiles;
+Query_ID	Duration	Logical_reads	Physical_reads	Query
+set profiling=1;
+set profiling_history_size=1;
+create database iostat;
+use iostat;
+create table t1(id int, a varchar(64))engine=innodb;
+show profiles;
+Query_ID	Duration	Logical_reads	Physical_reads	Query
+QUERY_ID	DURATION	LOGICAL_READS	PHYSICAL_READS	create table t1(id int, a varchar(64))engine=innodb
+drop database iostat;
+set @@session.profiling= @save_profiling;
+set @@profiling_history_size= @save_profiling_history_size;

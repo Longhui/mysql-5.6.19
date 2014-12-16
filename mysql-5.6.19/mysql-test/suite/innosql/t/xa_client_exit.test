@@ -1,0 +1,45 @@
+--error ER_INCORRECT_GLOBAL_LOCAL_VAR
+set global innodb_use_xa_resume=1;
+
+--disable_warnings
+drop table if exists t1;
+--enable_warnings
+
+create table t1(a int) engine=innodb;
+
+connect (con1,localhost,root,,);
+connection con1;
+
+xa start '111';
+insert into t1 values(1);
+xa end '111';
+xa prepare '111';
+
+disconnect con1;
+connection default;
+xa recover;
+xa commit '111';
+select * from t1;
+drop table t1;
+
+--disable_warnings
+-- source include/master-slave.inc
+--enable_warnings
+connection master;
+CREATE TABLE t(`a` INT) ENGINE=InnoDB;
+xa start '111';
+insert into t values(1);
+xa end '111';
+xa prepare '111';
+
+connection master;
+xa recover;
+xa commit '111';
+sync_slave_with_master;
+connection slave;
+select * from t;
+
+connection master;
+drop table t;
+sync_slave_with_master;
+--source include/rpl_end.inc

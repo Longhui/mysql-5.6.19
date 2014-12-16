@@ -58,7 +58,7 @@ static const char *sql_command[] = {
   "SQLCOM_DELETE", "SQLCOM_TRUNCATE", "SQLCOM_DROP_TABLE", "SQLCOM_DROP_INDEX", "SQLCOM_SHOW_DATABASES", "SQLCOM_SHOW_TABLES", "SQLCOM_SHOW_FIELDS",
   "SQLCOM_SHOW_KEYS", "SQLCOM_SHOW_VARIABLES", "SQLCOM_SHOW_STATUS", "SQLCOM_SHOW_ENGINE_LOGS", "SQLCOM_SHOW_ENGINE_STATUS", "SQLCOM_SHOW_ENGINE_MUTEX",
   "SQLCOM_SHOW_PROCESSLIST", "SQLCOM_SHOW_MASTER_STAT", "SQLCOM_SHOW_SLAVE_STAT", "SQLCOM_SHOW_GRANTS", "SQLCOM_SHOW_CREATE", "SQLCOM_SHOW_CHARSETS",
-  "SQLCOM_SHOW_COLLATIONS", "SQLCOM_SHOW_CREATE_DB", "SQLCOM_SHOW_TABLE_STATUS", "SQLCOM_SHOW_TRIGGERS", "SQLCOM_LOAD,SQLCOM_SET_OPTION",
+  "SQLCOM_SHOW_COLLATIONS", "SQLCOM_SHOW_CREATE_DB", "SQLCOM_SHOW_TABLE_STATUS", "SQLCOM_SHOW_TRIGGERS", "SQLCOM_LOAD", "SQLCOM_SET_OPTION",
   "SQLCOM_LOCK_TABLES", "SQLCOM_UNLOCK_TABLES", "SQLCOM_GRANT", "SQLCOM_CHANGE_DB", "SQLCOM_CREATE_DB", "SQLCOM_DROP_DB", "SQLCOM_ALTER_DB",
   "SQLCOM_REPAIR", "SQLCOM_REPLACE", "SQLCOM_REPLACE_SELECT", "SQLCOM_CREATE_FUNCTION", "SQLCOM_DROP_FUNCTION", "SQLCOM_REVOKE,SQLCOM_OPTIMIZE", "SQLCOM_CHECK",
   "SQLCOM_ASSIGN_TO_KEYCACHE", "SQLCOM_PRELOAD_KEYS", "SQLCOM_FLUSH", "SQLCOM_KILL", "SQLCOM_ANALYZE", "SQLCOM_ROLLBACK", "SQLCOM_ROLLBACK_TO_SAVEPOINT",
@@ -245,7 +245,7 @@ bool update_exclude_sql_list()
 {
   mysql_rwlock_wrlock(&exclude_sql_queue_lock);
   char *sql = NULL;
-  while((sql = statistics_exclude_db_queue.pop()) != NULL)
+  while((sql = statistics_exclude_sql_queue.pop()) != NULL)
   {
     my_free(sql);
   }
@@ -1032,6 +1032,7 @@ static void store_sql_stats(THD *thd)
     table->field[6]->store(s->m_disk_temp_table_created, TRUE);
     table->field[7]->store(s->m_row_reads, TRUE);
     table->field[8]->store(s->m_byte_reads, TRUE);
+    table->field[9]->store(s->m_max_exec_times,  TRUE);
     table->field[10]->store(s->m_min_exec_times, TRUE);
     table->field[11]->store(s->m_exec_times, TRUE);
     table->field[12]->store(s->m_exec_count, TRUE);

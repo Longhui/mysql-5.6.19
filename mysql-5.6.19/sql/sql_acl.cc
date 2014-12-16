@@ -1380,10 +1380,10 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
           next_field++;
         if (table->s->fields > MYSQL_USER_FIELD_PROFILE_NAME)
         {
-          user.profile_name = get_field(&global_acl_memory, table->field[next_field++]);
+          user.profile_name = get_field(&global_acl_memory, table->field[MYSQL_USER_FIELD_PROFILE_NAME]);
           if (!user.profile_name)
             user.profile_name = const_cast<char *>("");
-          char *role_name = get_field(&global_acl_memory, table->field[next_field++]);
+          char *role_name = get_field(&global_acl_memory, table->field[MYSQL_USER_FIELD_ROLE_NAME]);
           if (role_name)
           {
             user.role = find_acl_role(role_name);
@@ -1391,8 +1391,6 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
           else
             user.role = NULL;
         }
-        else
-          next_field++;
       } // end if (table->s->fields >= 31)
       else
       {
@@ -7726,14 +7724,14 @@ static int remove_role_from_users(TABLE *table, const char *role_name)
   table->use_all_columns();
   while(!(read_record_info.read_record(&read_record_info)))
   {
-    char *name = get_field(&global_acl_memory, table->field[44]);
+    char *name = get_field(&global_acl_memory, table->field[MYSQL_USER_FIELD_ROLE_NAME]);
     if (name == NULL || strcmp(name,role_name) != 0)
     {
       continue;
     }
     store_record(table,record[1]);
     role_name = const_cast<char*>("");
-    table->field[44]->store(role_name,strlen(role_name),&my_charset_bin);
+    table->field[MYSQL_USER_FIELD_ROLE_NAME]->store(role_name,strlen(role_name),&my_charset_bin);
     result = (table->file->ha_update_row(table->record[1],table->record[0]) != 0);
   }
   end_read_record(&read_record_info);
@@ -9281,7 +9279,7 @@ bool mysql_alter_user_profile(THD *thd, List < LEX_USER> &list, const char *prof
     {
       profile_name = const_cast<char *>("");
     }
-    table->field[43]->store(profile_name,strlen(profile_name),&my_charset_bin);
+    table->field[MYSQL_USER_FIELD_PROFILE_NAME]->store(profile_name,strlen(profile_name),&my_charset_bin);
     some_profile_altered = TRUE;
     break;
   }
@@ -9852,12 +9850,12 @@ static void clear_profile_for_users(THD *thd, const char *profile_name, TABLE *t
   table->use_all_columns();
   while(!(read_record_info.read_record(&read_record_info)))
   {
-    char *name = get_field(&global_acl_memory, table->field[43]);
+    char *name = get_field(&global_acl_memory, table->field[MYSQL_USER_FIELD_PROFILE_NAME]);
     if(name != NULL && strcmp(name,profile_name) == 0)
     {
       name = const_cast<char *>("");
       store_record(table, record[1]);
-      table->field[43]->store(name,strlen(name),&my_charset_bin);
+      table->field[MYSQL_USER_FIELD_PROFILE_NAME]->store(name,strlen(name),&my_charset_bin);
       if(table->file->ha_update_row(table->record[1],table->record[0]))
       {
         break;
@@ -10146,7 +10144,7 @@ bool mysql_grant_role_to_user(THD *thd, const char *role_name,
           continue;
         }
         store_record(table,record[1]);
-        table->field[44]->store(role_name,strlen(role_name),&my_charset_bin);
+        table->field[MYSQL_USER_FIELD_ROLE_NAME]->store(role_name,strlen(role_name),&my_charset_bin);
         some_user_altered = TRUE;
         break;
       }

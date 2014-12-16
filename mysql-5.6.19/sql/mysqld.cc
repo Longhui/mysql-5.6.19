@@ -398,7 +398,6 @@ ulong commit_number=0, commit_group1_number=0, commit_group2_number=0;
 bool  prepare_optimize;
 
 ulong slow_query_type;
-ulong long_query_io_ulong;
 my_bool opt_slow_io_log;
 
 my_bool opt_use_xa_tmplog;

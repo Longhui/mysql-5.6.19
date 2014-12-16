@@ -147,7 +147,7 @@ extern char *default_tz_name;
 extern Time_zone *default_tz;
 extern char *default_storage_engine;
 extern char *default_tmp_storage_engine;
-extern ulong slow_query_type, long_query_io_ulong;
+extern ulong slow_query_type;
 extern bool opt_endinfo, using_udf_functions;
 extern my_bool locked_in_memory;
 extern bool opt_using_transactions;
