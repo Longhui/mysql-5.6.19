@@ -301,8 +301,17 @@ IF(NOT WITHOUT_DYNAMIC_PLUGINS)
   ENDIF()
 ENDIF()
 
+# Toku: We want the tokudb version of mysql to use jemalloc.
+# These extra flags are needed to make it work in the context of mysqld 
+IF(DEFINED TOKU_JEMALLOC_LIBRARY)
+  SET(OPTIONAL_JEMALLOC_LIBRARY "${TOKU_JEMALLOC_LIBRARY}")
+  MESSAGE(STATUS "${OPTIONAL_JEMALLOC_LIBRARY}")
+ELSE()
+  SET(OPTIONAL_JEMALLOC_LIBRARY "")
+ENDIF()
+
 SET_TARGET_PROPERTIES(mysqld PROPERTIES ENABLE_EXPORTS TRUE) 
-TARGET_LINK_LIBRARIES(mysqld sql binlog rpl master slave sql mysys mysys_ssl)
+TARGET_LINK_LIBRARIES(mysqld sql binlog rpl master slave "${OPTIONAL_JEMALLOC_LIBRARY}" sql mysys mysys_ssl)
 
 # Provide plugins with minimal set of libraries
 SET(INTERFACE_LIBS ${LIBRT})
