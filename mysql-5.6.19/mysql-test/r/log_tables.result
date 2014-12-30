@@ -153,7 +153,7 @@ sleep(2)
 0
 select * from mysql.slow_log;
 start_time	user_host	query_time	lock_time	rows_sent	rows_examined	logical_reads	physical_reads	db	last_insert_id	insert_id	server_id	sql_text	thread_id
-TIMESTAMP	USER_HOST	QUERY_TIME	00:00:00	1	0	LOGICAL_READS	PHYSICAL_READS	mysql	0	QUERY	THREAD_ID	select sleep(2)	3
+TIMESTAMP	USER_HOST	QUERY_TIME	00:00:00	1	0	LOGICAL_READS	PHYSICAL_READS	mysql	0	0	1	QUERY	THREAD_ID
 set @@session.long_query_time = @saved_long_query_time;
 alter table mysql.general_log engine=myisam;
 ERROR HY000: You cannot 'ALTER' a log table if logging is enabled

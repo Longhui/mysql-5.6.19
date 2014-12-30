@@ -27,6 +27,8 @@ mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
 mysql.slave_worker_info                            OK
 mysql.slow_log                                     OK
+mysql.sql_stats                                    OK
+mysql.table_stats                                  OK
 mysql.tables_priv                                  OK
 mysql.time_zone                                    OK
 mysql.time_zone_leap_second                        OK
@@ -71,6 +73,8 @@ mysql.slave_worker_info
 note     : Table does not support optimize, doing recreate + analyze instead
 status   : OK
 mysql.slow_log                                     OK
+mysql.sql_stats                                    OK
+mysql.table_stats                                  OK
 mysql.tables_priv                                  OK
 mysql.time_zone                                    OK
 mysql.time_zone_leap_second                        OK
@@ -103,6 +107,8 @@ mysql.slave_master_info                            OK
 mysql.slave_relay_log_info                         OK
 mysql.slave_worker_info                            OK
 mysql.slow_log                                     OK
+mysql.sql_stats                                    OK
+mysql.table_stats                                  OK
 mysql.tables_priv                                  OK
 mysql.time_zone                                    OK
 mysql.time_zone_leap_second                        OK
@@ -145,6 +151,8 @@ mysql.slave_worker_info
 note     : Table does not support optimize, doing recreate + analyze instead
 status   : OK
 mysql.slow_log                                     Table is already up to date
+mysql.sql_stats                                    Table is already up to date
+mysql.table_stats                                  Table is already up to date
 mysql.tables_priv                                  Table is already up to date
 mysql.time_zone                                    Table is already up to date
 mysql.time_zone_leap_second                        Table is already up to date
