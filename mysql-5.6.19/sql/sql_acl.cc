@@ -1383,6 +1383,11 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
           user.profile_name = get_field(&global_acl_memory, table->field[MYSQL_USER_FIELD_PROFILE_NAME]);
           if (!user.profile_name)
             user.profile_name = const_cast<char *>("");
+        }
+        else
+          next_field++;
+        if (table->s->fields > MYSQL_USER_FIELD_ROLE_NAME)
+        {
           char *role_name = get_field(&global_acl_memory, table->field[MYSQL_USER_FIELD_ROLE_NAME]);
           if (role_name)
           {
@@ -1391,6 +1396,8 @@ static my_bool acl_load(THD *thd, TABLE_LIST *tables)
           else
             user.role = NULL;
         }
+        else
+          next_field++;
       } // end if (table->s->fields >= 31)
       else
       {

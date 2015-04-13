@@ -630,19 +630,27 @@ ALTER TABLE user ADD plugin char(64) DEFAULT '',  ADD authentication_string TEXT
 ALTER TABLE user MODIFY plugin char(64) DEFAULT '';
 ALTER TABLE user MODIFY authentication_string TEXT;
 
-ALTER TABLE user ADD profile_name char(64) DEFAULT '' NOT NULL, ADD role_name char(64) DEFAULT '' NOT NULL;
-ALTER TABLE user MODIFY profile_name char(64) DEFAULT '' NOT NULL;
-ALTER TABLE user MODIFY role_name char(64) DEFAULT '' NOT NULL;
-
 -- establish if the field is already there.
 SET @hadPasswordExpired:=0;
 SELECT @hadPasswordExpired:=1 FROM user WHERE password_expired LIKE '%';
 
-ALTER TABLE user ADD password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+ALTER TABLE user ADD password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER authentication_string;
 UPDATE user SET password_expired = 'N' WHERE @hadPasswordExpired=0;
 
 -- need to compensate for the ALTER TABLE user .. CONVERT TO CHARACTER SET above
 ALTER TABLE user MODIFY password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+
+SET @hadProfileName:=0;
+SELECT @hadProfileName:=1 FROM user WHERE profile_name LIKE '%';
+ALTER TABLE user ADD profile_name char(64) COLLATE utf8_general_ci DEFAULT '' NOT NULL AFTER password_expired;
+UPDATE user SET profile_name = '' WHERE @hadProfileName=0;
+ALTER TABLE user MODIFY profile_name char(64) COLLATE utf8_general_ci DEFAULT '' NOT NULL;
+
+SET @hadRoleName:=0;
+SELECT @hadRoleName:=1 FROM user WHERE role_name LIKE '%';
+ALTER TABLE user ADD role_name char(64) COLLATE utf8_general_ci DEFAULT '' NOT NULL AFTER profile_name;
+UPDATE user SET role_name = '' WHERE @hadRoleName=0;
+ALTER TABLE user MODIFY role_name char(64) COLLATE utf8_general_ci DEFAULT '' NOT NULL;
 
 -- Need to pre-fill mysql.proxies_priv with access for root even when upgrading from
 -- older versions

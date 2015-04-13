@@ -300,7 +300,7 @@ static bool stmt_allowed_operate_profile_table(THD *thd,TABLE_LIST *all_tables)
   }
   if (accessed == 0 || thd->security_ctx->master_access & PROFILE_ACL)
     DBUG_RETURN(1);
-  if (accessed == 0 && thd->lex->sql_command == SQLCOM_CREATE_TABLE)
+  if (accessed != 0 && thd->lex->sql_command == SQLCOM_CREATE_TABLE)
     DBUG_RETURN(1);
   DBUG_RETURN(0);
 }
