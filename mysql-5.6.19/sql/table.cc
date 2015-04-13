@@ -1134,6 +1134,18 @@ static int open_binary_frm(THD *thd, TABLE_SHARE *share, uchar *head,
     if (new_frm_ver >= 3)
     {
       keyinfo->flags=	   (uint) uint2korr(strpos) ^ HA_NOSAME;
+      /* Replace HA_FULLTEXT & HA_SPATIAL with HA_CLUSTERING. This way we
+      support TokuDB clustering key definitions without changing the FRM
+      format. */
+      if (keyinfo->flags & HA_SPATIAL && keyinfo->flags & HA_FULLTEXT)
+      {
+        if (!ha_check_storage_engine_flag(share->db_type(),
+                                          HTON_SUPPORTS_CLUSTERED_KEYS))
+          goto err;
+        keyinfo->flags|= HA_CLUSTERING;
+        keyinfo->flags&= ~HA_SPATIAL;
+        keyinfo->flags&= ~HA_FULLTEXT;
+      }
       keyinfo->key_length= (uint) uint2korr(strpos+2);
       keyinfo->user_defined_key_parts= (uint) strpos[4];
       keyinfo->algorithm=  (enum ha_key_alg) strpos[5];
