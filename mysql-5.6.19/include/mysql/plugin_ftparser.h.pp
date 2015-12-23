@@ -167,6 +167,9 @@ struct handlerton;
  struct Mysql_replication {
    int interface_version;
  };
+ struct Mysql_rpl_reverse {
+   int interface_vsrsion;
+ };
 struct st_mysql_value
 {
   int (*value_type)(struct st_mysql_value *);

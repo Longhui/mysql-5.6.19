@@ -294,15 +294,18 @@ public:
 protected:
   char master_log_name[FN_REFLEN];
   my_off_t master_log_pos;
+  bool master_log_pos_inited;
 
 public:
   void clear_in_memory_info(bool all);
 
   inline const char* get_master_log_name() { return master_log_name; }
   inline ulonglong get_master_log_pos() { return master_log_pos; }
+  inline bool get_master_log_pos_inited() { return master_log_pos_inited; }
   inline void set_master_log_name(const char *log_file_name)
   {
-     strmake(master_log_name, log_file_name, sizeof(master_log_name) - 1);
+    strmake(master_log_name, log_file_name, sizeof(master_log_name) - 1);
+    master_log_pos_inited= true;
   }
   inline void set_master_log_pos(ulonglong log_pos)
   {

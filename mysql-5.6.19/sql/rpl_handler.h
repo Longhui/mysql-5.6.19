@@ -23,20 +23,6 @@
 #include "sql_plugin.h"
 #include "replication.h"
 
-class Vsr_master_delegate{
-public:
-  Vsr_master_observer *observer;
-  void before_recover(char *fname);
-  Vsr_master_delegate():observer(NULL){};
-};
-
-class Vsr_slave_delegate{
-public:
-  Vsr_slave_observer* observer;
-  void master_request(NET *net);
-  Vsr_slave_delegate():observer(NULL){};
-};
-
 class Observer_info {
 public:
   void *observer;
@@ -280,26 +266,12 @@ private:
 int delegates_init();
 void delegates_destroy();
 
-extern Vsr_master_delegate *vsr_master_delegate;
-extern Vsr_slave_delegate *vsr_slave_delegate;
 extern Trans_delegate *transaction_delegate;
 extern Binlog_storage_delegate *binlog_storage_delegate;
 #ifdef HAVE_REPLICATION
 extern Binlog_transmit_delegate *binlog_transmit_delegate;
 extern Binlog_relay_IO_delegate *binlog_relay_io_delegate;
 #endif /* HAVE_REPLICATION */
-
-#define VSR_MASTER_REQUEST(t)                        \
-  if (NULL != vsr_slave_delegate)                    \
-  {                                                  \
-    vsr_slave_delegate->master_request(t);           \
-  }                                                     
-
-#define VSR_BEFORE_RECOVER(f)                        \
-  if (NULL != vsr_master_delegate)                   \
-  {                                                  \
-    vsr_master_delegate->before_recover(f);          \
-  }                                                  \
 
 /*
   if there is no observers in the delegate, we can return 0

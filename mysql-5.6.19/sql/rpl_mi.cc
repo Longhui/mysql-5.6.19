@@ -120,8 +120,9 @@ Master_info::Master_info(
    checksum_alg_before_fd(BINLOG_CHECKSUM_ALG_UNDEF),
    retry_count(master_retry_count), master_gtid_mode(0),
    mi_description_event(NULL),
-   auto_position(false)
+   auto_position(false), master_log_pos_inited(false)
 {
+  master_log_name[0]= 0;
   host[0] = 0; user[0] = 0; bind_addr[0] = 0;
   password[0]= 0; start_password[0]= 0;
   ssl_ca[0]= 0; ssl_capath[0]= 0; ssl_cert[0]= 0;
@@ -193,7 +194,6 @@ void Master_info::init_master_log_pos()
 
   master_log_name[0]= 0;
   master_log_pos= BIN_LOG_HEADER_SIZE;             // skip magic number
-
   /* Intentionally init ssl_verify_server_cert to 0, no option available  */
   ssl_verify_server_cert= 0;
   /* 

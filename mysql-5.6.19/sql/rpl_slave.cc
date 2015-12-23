@@ -41,6 +41,7 @@
 #include <mysqld_error.h>
 #include <mysys_err.h>
 #include "rpl_handler.h"
+#include "rpl_reverse_handler.h"
 #include "rpl_info_dummy.h"
 #include <signal.h>
 #include <mysql.h>
@@ -3674,10 +3675,10 @@ apply_event_and_update_pos(Log_event** ptr_ev, THD* thd, Relay_log_info* rli)
     else
     {
       DBUG_ASSERT(*ptr_ev == ev || rli->is_parallel_exec() ||
-		  (!ev->worker &&
-		   (ev->get_type_code() == INTVAR_EVENT ||
-		    ev->get_type_code() == RAND_EVENT ||
-		    ev->get_type_code() == USER_VAR_EVENT)));
+          (!ev->worker &&
+           (ev->get_type_code() == INTVAR_EVENT ||
+            ev->get_type_code() == RAND_EVENT ||
+            ev->get_type_code() == USER_VAR_EVENT)));
 
       rli->inc_event_relay_log_pos();
     }
@@ -3946,8 +3947,8 @@ static int exec_relay_log_event(THD* thd, Relay_log_info* rli)
           We were in a transaction which has been rolled back because of a
           temporary error;
           let's seek back to BEGIN log event and retry it all again.
-	  Note, if lock wait timeout (innodb_lock_wait_timeout exceeded)
-	  there is no rollback since 5.0.13 (ref: manual).
+      Note, if lock wait timeout (innodb_lock_wait_timeout exceeded)
+      there is no rollback since 5.0.13 (ref: manual).
           We have to not only seek but also
           a) init_info(), to seek back to hot relay log's start for later
           (for when we will come back to this hot log after re-processing the
@@ -4208,8 +4209,8 @@ pthread_handler_t handle_slave_io(void *arg)
     sql_print_information("Slave I/O thread: connected to master '%s@%s:%d',"
                           "replication started in log '%s' at position %s",
                           mi->get_user(), mi->host, mi->port,
-			  mi->get_io_rpl_log_name(),
-			  llstr(mi->get_master_log_pos(), llbuff));
+              mi->get_io_rpl_log_name(),
+              llstr(mi->get_master_log_pos(), llbuff));
   }
   else
   {
@@ -5734,9 +5735,9 @@ log '%s' at position %s, relay log '%s' position: %s", rli->get_rpl_log_name(),
           if (last_errno == 0)
           {
             /*
- 	      This function is reporting an error which was not reported
- 	      while executing exec_relay_log_event().
- 	    */ 
+           This function is reporting an error which was not reported
+           while executing exec_relay_log_event().
+         */ 
             rli->report(ERROR_LEVEL, thd->get_stmt_da()->sql_errno(),
                         "%s", errmsg);
           }
@@ -5925,7 +5926,7 @@ static int process_io_create_file(Master_info* mi, Create_file_log_event* cev)
       }
       if (unlikely(!num_bytes)) /* eof */
       {
-	/* 3.23 master wants it */
+    /* 3.23 master wants it */
         net_write_command(net, 0, (uchar*) "", 0, (uchar*) "", 0);
         /*
           If we wrote Create_file_log_event, then we need to write
@@ -7587,7 +7588,13 @@ int rotate_relay_log(Master_info* mi)
   error= rli->relay_log.new_file(mi->get_mi_description_event());
   if (error != 0)
     goto end;
-
+/*
+ @raolh
+ add a rotate event at begin of relay log to indicate master's binlog file name
+*/
+  SAVE_MASTER_INFO(rli->relay_log.get_log_file(), active_mi->get_master_log_name(),
+    active_mi->get_master_log_pos(), active_mi->master_id);
+  APPEND_ROTATE_EVENT();
   /*
     We harvest now, because otherwise BIN_LOG_HEADER_SIZE will not immediately
     be counted, so imagine a succession of FLUSH LOGS  and assume the slave
@@ -7654,7 +7661,7 @@ bool rpl_master_has_bug(const Relay_log_info *rli, uint bug_id, bool report,
         (pred == NULL || (*pred)(param)))
     {
       if (!report)
-	return TRUE;
+    return TRUE;
       // a short message for SHOW SLAVE STATUS (message length constraints)
       my_printf_error(ER_UNKNOWN_ERROR, "master may suffer from"
                       " http://bugs.mysql.com/bug.php?id=%u"
@@ -8557,7 +8564,228 @@ err:
   }
   DBUG_RETURN(ret);
 }
+
+typedef struct fdecr_event_node {
+Format_description_log_event *ev;
+fdecr_event_node *next;
+
+fdecr_event_node():ev(0),next(0){};
+
+} fdecr_event_node;
+/*
+@raolh
+find a xid after binlog position (f_name,f_pos), and put it in variable 'xid'
+if find one return 1, or else return -1;
+IN:
+  log : relay log ready to read
+  f_name, f_pos : sync point after which xid shoud be read
+  skip_check_name : should skip check f_name or not
+  fdle : format deacription event used to read event
+OUT:
+  xid : contain found xid value
+  fdle : contain format deacription event used to read event
+return val:
+  1 : found a xid
+  -1 : not found any xid
+  -2 : can't find the oldest relaylog just contained events of binlog 'f_name'
+*/
+static int find_next_xid_after_point(IO_CACHE *log, char *f_name, unsigned long long f_pos,
+    ulonglong *xid,  fdecr_event_node* &fdle_node)
+{
+  static bool skip_check_fname= 0;
+  Log_event *ev=0;
+  Log_event_type ev_type;
+  
+  do{
+      if ( (ev= Log_event::read_log_event(log, 0, (fdle_node)->ev, 0)) == 0)
+        return -1;
+      ev_type= ev->get_type_code();
+
+      if (ev_type==FORMAT_DESCRIPTION_EVENT)
+      {
+        fdecr_event_node *node1= new fdecr_event_node;
+        node1->ev= (Format_description_log_event*)ev;
+        node1->next=fdle_node;
+        fdle_node= node1;
+      }
+      else if(ev_type==XID_EVENT&& ev->log_pos > f_pos &&skip_check_fname)
+      {
+        Xid_log_event *xev= (Xid_log_event *)ev;
+        *xid= xev->xid;
+        delete ev;
+        return 1;
+      }
+      else if(ev_type==ROTATE_EVENT && ev->server_id != ::server_id)
+      {
+        Rotate_log_event *rev= (Rotate_log_event *)ev;
+        int cmp= strncmp(f_name, rev->new_log_ident, rev->ident_len);
+        delete ev;
+        /*@raolh.
+          if this relaylog contain events before binlog 'f_name', it can be skiped.
+        */
+        if( cmp> 0)
+          return -1;
+        /*if can't fine relaylog contained events of binlog 'f_name', that means the
+          oldest relaylog contain binlog 'f_name' events has been purged. it should report
+          a error.*/
+        if (cmp < 0 && !skip_check_fname)
+          return -2;
+        /*cmp==0 && skip_check_name !=0;*/
+        skip_check_fname= 1;
+      }
+      else
+        delete ev;
+    }while(ev_type != XID_EVENT);
+  }
+  
+#endif /* HAVE_REPLICATION */
+/*
+  @raolh
+  reply all transaction xids to master which after a master binlog position
+*/
+int reply_xids_after_sync_point(NET *net, char *f_name, unsigned long long f_pos)
+{
+  int error;
+  LOG_INFO log_info;
+  IO_CACHE log;
+  char log_name[FN_REFLEN];
+  const char* errmsg;
+  char buff[512], *end;
+  Format_description_log_event fdle(BINLOG_VERSION);
+  fdecr_event_node *fdle_node;
+  File file= -1;
+  Relay_log_info *rli= active_mi->rli;
+  /*
+   @raolh
+   find first relay log file name.
+  */
+  if (error=rli->relay_log.find_log_pos(&log_info,NullS, true/*need_lock_index=true*/))
+  {
+    if (error != LOG_INFO_EOF)
+    { 
+      sql_print_error("find_log_pos() failed (error: %d)", error);
+      error= -1;
+    }
+    else
+      error= 0;
+    goto err;
+  }
+
+  do{
+  /*
+    @raolh
+    get xids that after 'point(f_name, f_pos)' and storge them in package,which
+    should be send to master later.
+    network package format:
+    2 bytes  xids number( <=20 ), 0 indicate no more any xids
+    8 bytes  xid
+    8 bytes  xid
+    ... ...
+  */
+      fdle_node= new fdecr_event_node;
+      fdle_node->ev= &fdle;
+      end= buff+ 2;
+      strmake(log_name, log_info.log_file_name, sizeof(log_name)-1);
+      if ((file= open_binlog_file(&log, log_name, &errmsg))< 0)
+      {
+        sql_print_error("%s",errmsg);
+        error= -1;
+        goto err;
+      }
+      ulonglong xid= -1;
+      int res= 0;
+     do{
+         res= find_next_xid_after_point(&log, f_name, f_pos, &xid, fdle_node);
+         if (res == -2)
+         {
+          error= -2;
+          goto err;
+         }
+
+         if (res > 0)
+         {
+            int8store(end, xid);
+            end+= 8;
+            if ( (end - buff - 2)/8 == 20 )
+            {
+               int2store(buff, 20);
+               if (error= my_net_write(net, (const uchar*)buff, end - buff))
+               {
+                  sql_print_error("my_net_write() fail (error:%d)",error);
+                  error= -1;
+                  goto err;
+               }
+               if(error= net_flush(net))
+               {
+                  sql_print_error("net_flush() fail (error:%d)", error);
+                  error= -1;
+                  goto err; 
+               }
+               end= buff+2;
+            }
+         }
+      } while(res > 0);
+      /*@raolh. 
+       send the rest xids to master maybe less then 20
+      */
+      if(end - buff - 2 > 0)
+      {
+         int2store(buff, (end - buff - 2)/8);
+         if (error= my_net_write(net, (const uchar*)buff, end - buff))
+        {
+            sql_print_error("my_net_write() fail (error:%d)",error);
+            error= -1;
+            goto err; 
+        }
+        if(error= net_flush(net))
+        {
+           sql_print_error("net_flush() fail (error:%d)", error);
+           error= -1;
+           goto err; 
+        }
+        end= buff + 2;
+      }
+
+    /*@raolh
+      we should delete format description events created in find_next_xid()
+    */
+    while(fdle_node)
+    {
+      if (fdle_node->ev != &fdle)
+       delete fdle_node->ev;
+
+      fdecr_event_node *next= fdle_node->next;
+      delete fdle_node;
+      fdle_node= next;
+    }
+
+    end_io_cache(&log);
+    mysql_file_close(file, MYF(MY_WME));
+  } while (!rli->relay_log.find_next_log(&log_info, true/*need_lock_index=true*/));
+
+  /*
+   @raolh.
+   at last we send a package whose xids number is 0 to tell master there are no more any xids.
+  */
+  end= buff + 2;
+  int2store(buff, 0);
+  if (error= my_net_write(net, (const uchar*)buff, end - buff))
+  {
+    sql_print_error("my_net_write() fail (error:%d)",error);
+    error= -1;
+    goto err; 
+  }
+  if(error= net_flush(net))
+  {
+    sql_print_error("net_flush() fail (error:%d)", error);
+    error= -1;
+    goto err; 
+  }
+  return 0;
+
+err:
+  return error;
+}
 /**
   @} (end of group Replication)
 */
-#endif /* HAVE_REPLICATION */

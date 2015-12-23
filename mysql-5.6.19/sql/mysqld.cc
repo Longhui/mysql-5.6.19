@@ -98,6 +98,7 @@
 #include "rpl_injector.h"
 
 #include "rpl_handler.h"
+#include "rpl_reverse_handler.h"
 
 #ifdef HAVE_SYS_PRCTL_H
 #include <sys/prctl.h>
@@ -1900,6 +1901,10 @@ void clean_up(bool print_message)
   if (tc_log)
     tc_log->close();
   delegates_destroy();
+  /**raolh
+   destroy delegate of rpl reverse recover.
+  */
+  rpl_reverse_delegate_destroy();
   xid_cache_free();
   table_def_free();
   mdl_destroy();
@@ -4770,6 +4775,10 @@ static int init_server_components()
   if (delegates_init())
     unireg_abort(1);
 
+  /**@raolh
+    initialize delegates for rpl reverse recover
+  */
+  rpl_reverse_delegate_init(); 
   /* need to configure logging before initializing storage engines */
   if (opt_log_slave_updates && !opt_bin_log)
   {

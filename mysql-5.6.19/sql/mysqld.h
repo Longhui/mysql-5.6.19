@@ -210,6 +210,13 @@ extern ulong opt_mts_slave_parallel_workers;
 extern ulonglong opt_mts_pending_jobs_size_max;
 extern uint max_user_connections;
 extern ulong extra_max_connections;
+
+extern char  *ha_partner_host;
+extern uint   ha_partner_port;
+extern uint   ha_partner_force;
+extern char  *ha_partner_user;
+extern char  *ha_partner_password;
+
 extern ulong thread_created;
 extern scheduler_functions *thread_scheduler, *extra_thread_scheduler;
 extern ulong rpl_stop_slave_timeout;

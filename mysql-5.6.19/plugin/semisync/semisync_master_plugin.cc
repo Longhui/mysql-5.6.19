@@ -17,7 +17,6 @@
 
 
 #include "semisync_master.h"
-#include "semisync_vsr.h"
 #include "semisync_master_ack_receiver.h"
 #include "sql_class.h"                          // THD
 
@@ -484,22 +483,6 @@ static void init_semisync_psi_keys(void)
   mysql_stage_register(category, all_semisync_stages, count);
 }
 #endif /* HAVE_PSI_INTERFACE */
-void repl_semi_adjust_binlog(Vsr_master_param *param )
-{
-  adjust_binlog_with_slave(param->slave_host, param->slave_port,
-             param->user, param->passwd, param->last_binlog);
-}
-
-void init_callback_funcs(Callback_funcs *param)
-{
-  set_binlog_append_event_cb(param->log_callback);
-}
-	
-Vsr_master_observer vsr_master_observer= {
-  sizeof(Vsr_master_observer), //len
-  repl_semi_adjust_binlog, // before recover
-  init_callback_funcs, //init_observer
-};
 
 static int semi_sync_master_plugin_init(void *p)
 {
@@ -507,7 +490,6 @@ static int semi_sync_master_plugin_init(void *p)
   init_semisync_psi_keys();
 #endif
   mysql_mutex_init(key_ss_mutex_LOCK_ordered_commit, &LOCK_ordered_commit, MY_MUTEX_INIT_SLOW);
-  register_master_observer(&vsr_master_observer);
 
   if (repl_semisync.initObject())
     return 1;
@@ -541,7 +523,6 @@ static int semi_sync_master_plugin_deinit(void *p)
     sql_print_error("unregister_binlog_transmit_observer failed");
     return 1;
   }
-  unregister_master_observer();
   sql_print_information("unregister_replicator OK");
   return 0;
 }

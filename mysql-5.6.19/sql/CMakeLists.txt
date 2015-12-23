@@ -88,6 +88,7 @@ SET(SQL_SHARED_SOURCES
   protocol.cc
   records.cc
   rpl_handler.cc
+  rpl_reverse_handler.cc
   scheduler.cc 
   set_var.cc 
   signal_handler.cc
@@ -237,7 +238,7 @@ SET (BINLOG_SOURCE uuid.cc rpl_gtid_misc.cc
 		   rpl_filter.cc rpl_record.cc rpl_record_old.cc rpl_utility.cc
 		   rpl_injector.cc)
 ADD_LIBRARY(binlog ${BINLOG_SOURCE})
-SET (RPL_SOURCE rpl_handler.cc rpl_tblmap.cc)
+SET (RPL_SOURCE rpl_handler.cc rpl_tblmap.cc rpl_reverse_handler.cc)
 ADD_DEPENDENCIES(binlog GenError)
 ADD_LIBRARY(rpl ${RPL_SOURCE})
 SET (MASTER_SOURCE rpl_master.cc)

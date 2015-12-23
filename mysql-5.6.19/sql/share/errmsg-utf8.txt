@@ -7101,6 +7101,17 @@ ER_AES_INVALID_IV
   eng "The initialization vector supplied to %s is too short. Must be at least %d bytes long"
   bg "Инициализационния вектор подаден на %s е прекалено къс. Трябва да е поне %d байта"
 
+
+##
+# add by innosql
+##
+
+ER_TARGET_RELAYLOG_PURGED
+  eng "The relaylog contained events of %s has been purged on slave. Check the slave parameter relay_log_purge"
+
+ER_SLAVE_NOT_INITIED
+  eng "The mate you appointed isn't initialed as a slave. "
+
 ER_RDSADMIN_DELETED
   eng "users witch configured in user_list_string can not to be deleted or updated."
 

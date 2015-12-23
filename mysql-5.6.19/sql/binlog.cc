@@ -22,6 +22,7 @@
 #include "rpl_rli.h"
 #include "sql_plugin.h"
 #include "rpl_handler.h"
+#include "rpl_reverse_handler.h"
 #include "rpl_info_factory.h"
 #include "rpl_utility.h"
 #include "debug_sync.h"
@@ -899,13 +900,39 @@ int binlog_rollback_append(IO_CACHE *log)
   {
     thd =new THD;
   }
-  Query_log_event evt(thd, STRING_WITH_LEN("ROLLBACK"),
-                          TRUE, FALSE, TRUE, 0);
+
+  Query_log_event evt(thd, STRING_WITH_LEN("ROLLBACK"), TRUE, \
+                       FALSE, TRUE, 0, TRUE);
+
+  evt.checksum_alg= binlog_checksum_options;
+  
+  int res= evt.write(log);
+
   if (NULL == current_thd)
   {
     delete thd;
   }
-  return evt.write(log);
+  return res;
+}
+
+/*
+  @raolh
+  append a artificial rotate event in relay log just after format description event.
+  this rotate event contain current master binlog file name, which is used to quickly
+  findout corresponding master binlog file name. because this is a artificial event, 
+  we shouldn't increase exe_master_log_pos in SQL thread.
+*/
+
+int relay_log_append_rotate_event(IO_CACHE *log,const char* f_name, unsigned long long f_pos, unsigned long server_id)
+{
+  int error= 0;
+  Rotate_log_event r(f_name + dirname_length(f_name), 0, f_pos, 0);
+
+  if (error= r.write(log))
+  {
+    sql_print_error("Slave fail to append a rotate event to relay log!!!");
+  }
+  return error;
 }
 
 /*
@@ -6200,8 +6227,15 @@ int MYSQL_BIN_LOG::open_binlog(const char *opt_name)
       sql_print_error("find_log_pos() failed (error: %d)", error);
       goto err;
     }
+    /*
+    @raolh
+    rpl recover. truncate events more than slave.
+    firstly save last event pos in rpl recover mode,
+    then binlog end pos will be got in rpl reverse mode.
+    */
+    SAVE_LAST_EVENT_POS(log_name + dirname_length(log_name), 0);
+    SYNC_WITH_SLAVE_1();
 
-	VSR_BEFORE_RECOVER(log_name + dirname_length(log_name));
     if ((file= open_binlog_file(&log, log_name, &errmsg)) < 0)
     {
       sql_print_error("%s", errmsg);
@@ -6754,22 +6788,15 @@ MYSQL_BIN_LOG::change_stage(THD *thd,
     DBUG_ASSERT(!thd_get_cache_mngr(thd)->dbug_any_finalized());
     DBUG_RETURN(true);
   }
-
-//if (Stage_manager::FLUSH_STAGE == stage)
-// fprintf(stderr, "flush_stage_leader: %x\n",thd);
-
-//if (Stage_manager::COMMIT_STAGE == stage)
-//  fprintf(stderr, "commit_stage_leader: %x\n",thd);
-
   /*
-    @raolh
-	int enter_ordered_commit function, leader would access a mutex(LOCK_ordered_commit) in semisync_master module, whick protact VSR safe.
+   @raolh
+   int enter_ordered_commit function, leader would access a mutex(LOCK_ordered_commit) in semisync_master module, whick protact VSR safe.
 
-	VSR: There will be deadlock without LOCK_ordered_commit. The deadlock happen like this:
-	thread 1 hold LOCK_commit and wait for sync with slave (dump thread send binglog to slave)
-	thread 2 hold LOCK_log and wait for LOCK_commit
-	thread 3 (dump thread) recive signal of binlog update from thread 1, and wait for LOCK_log to 
-	weakup from LOCK_cond wait.
+   VSR: There will be deadlock without LOCK_ordered_commit. The deadlock happen like this:
+    thread 1 hold LOCK_commit and wait for sync with slave (dump thread send binglog to slave)
+    thread 2 hold LOCK_log and wait for LOCK_commit
+    thread 3 (dump thread) recive signal of binlog update from thread 1, and wait for LOCK_log to 
+    weakup from LOCK_cond wait.
   */
   RUN_HOOK(binlog_storage, enter_ordered_commit, (thd, Stage_manager::FLUSH_STAGE == stage));
 
@@ -7029,11 +7056,11 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
       sql_print_error("Failed to run 'after_flush' hooks");
       flush_error= ER_ERROR_ON_WRITE;
     }
-	/*
-	  @raolh
-	  VSR need it to sync binlog file just after write it to filesystem
-	*/
-	std::pair<bool, bool> result= sync_binlog_file(false);
+    /*
+     @raolh
+     VSR need it to sync binlog file just after write it to filesystem
+    */
+    std::pair<bool, bool> result= sync_binlog_file(false);
     flush_error= result.first;
 
     signal_update();
@@ -7042,35 +7069,8 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
 
   /*
     @raolh
-	Remove sync stage because binlog has been synced in flush stage, which is needed by VSR
+    Remove sync stage because binlog has been synced in flush stage, which is needed by VSR
   */
-
-/*
-    Stage #2: Syncing binary log file to disk
-
-  bool need_LOCK_log= (get_sync_period() == 1);
-
-    LOCK_log is not released when sync_binlog is 1. It guarantees that the
-    events are not be replicated by dump threads before they are synced to disk.
-
-  if (change_stage(thd, Stage_manager::SYNC_STAGE, wait_queue,
-                   need_LOCK_log ? NULL : &LOCK_log, &LOCK_sync))
-  {
-    DBUG_PRINT("return", ("Thread ID: %lu, commit_error: %d",
-                          thd->thread_id, thd->commit_error));
-    DBUG_RETURN(finish_commit(thd));
-  }
-  THD *final_queue= stage_manager.fetch_queue_for(Stage_manager::SYNC_STAGE);
-  if (flush_error == 0 && total_bytes > 0)
-  {
-    DEBUG_SYNC(thd, "before_sync_binlog_file");
-    std::pair<bool, bool> result= sync_binlog_file(false);
-    flush_error= result.first;
-  }
-
-  if (need_LOCK_log)
-    mysql_mutex_unlock(&LOCK_log);
-*/
 
   /*
     Stage #3: Commit all transactions in order.
@@ -7102,6 +7102,8 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
     */
     RUN_HOOK(binlog_storage, after_sync, (thd, true));
     RUN_HOOK(binlog_storage, leave_ordered_commit, (thd, true));
+    
+    DBUG_EXECUTE_IF("crash_after_binlog_send", DBUG_SUICIDE(););
 
     process_commit_stage_queue(thd, commit_queue);
     mysql_mutex_unlock(&LOCK_commit);
@@ -7163,6 +7165,14 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   DBUG_RETURN(thd->commit_error);
 }
 
+int add_xid_to_list(MEM_ROOT *mem_root, HASH *xids, ulonglong xid)
+{
+  uchar *x= (uchar *) memdup_root(mem_root, (uchar*) &xid, sizeof(xid));
+  if (!x || my_hash_insert(xids, x))
+    return 1;
+
+  return 0;
+}
 
 /**
   MYSQLD server recovers from last crashed binlog.
@@ -7188,7 +7198,6 @@ int MYSQL_BIN_LOG::recover(IO_CACHE *log, Format_description_log_event *fdle,
     is partially written to the binlog.
   */
   bool in_transaction= FALSE;
-
   if (! fdle->is_valid() ||
       my_hash_init(&xids, &my_charset_bin, TC_LOG_PAGE_SIZE/3, 0,
                    sizeof(my_xid), 0, 0, MYF(0)))
@@ -7214,9 +7223,7 @@ int MYSQL_BIN_LOG::recover(IO_CACHE *log, Format_description_log_event *fdle,
       DBUG_ASSERT(in_transaction == TRUE);
       in_transaction= FALSE;
       Xid_log_event *xev=(Xid_log_event *)ev;
-      uchar *x= (uchar *) memdup_root(&mem_root, (uchar*) &xev->xid,
-                                      sizeof(xev->xid));
-      if (!x || my_hash_insert(&xids, x))
+	  if (add_xid_to_list(&mem_root, &xids, xev->xid))
         goto err2;
     }
 
@@ -7261,6 +7268,12 @@ int MYSQL_BIN_LOG::recover(IO_CACHE *log, Format_description_log_event *fdle,
 
     delete ev;
   }
+/*
+  @raolh
+  rpl recover. get lost xids from slave
+*/
+  SAVE_LAST_XID_POS(log_file_name + dirname_length(log_file_name), *valid_pos);
+  SYNC_WITH_SLAVE_2((void *)&mem_root, (void *)&xids);
 
   if (ha_recover(&xids))
     goto err2;

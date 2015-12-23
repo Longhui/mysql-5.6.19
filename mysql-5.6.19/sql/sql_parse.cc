@@ -80,6 +80,7 @@
 #include <myisam.h>
 #include <my_dir.h>
 #include "rpl_handler.h"
+#include "rpl_reverse_handler.h"
 
 #include "sp_head.h"
 #include "sp.h"
@@ -164,6 +165,7 @@ const LEX_STRING command_name[]={
   { C_STRING_WITH_LEN("Daemon") },
   { C_STRING_WITH_LEN("Binlog Dump GTID") },
   { C_STRING_WITH_LEN("VSR Query") },
+  { C_STRING_WITH_LEN("VSR Query Lost Xids") },
   { C_STRING_WITH_LEN("Error") }  // Last command number
 };
 
@@ -1149,7 +1151,6 @@ static my_bool deny_updates_if_read_only_option(THD *thd,
   /* Assuming that only temporary tables are modified. */
   DBUG_RETURN(FALSE);
 }
-
 /**
   Perform one connection-level (COM_XXXX) command.
 
@@ -1588,18 +1589,65 @@ bool dispatch_command(enum enum_server_command command, THD *thd,
     error= com_binlog_dump(thd, packet, packet_length);
     break;
 #endif
+#ifdef HAVE_REPLICATION
   case COM_VSR_QUERY:
   {
-    sql_print_information("VSR HA : master query replication information");
+    sql_print_information("RPL RECOVER : Master query Read_master_log_file/pos");
     if (check_global_access(thd, REPL_SLAVE_ACL))
     {
-      sql_print_information("VSR HA : ha_partner_user need REPL_SLAVE privilege");
       break;
     }
-    VSR_MASTER_REQUEST(&thd->net);
+    if (!active_mi->get_master_log_name()[0])
+    {
+      /*@raolh
+       actually it should report a error.
+      */
+      my_error(ER_SLAVE_NOT_INITIED, MYF(0));
+      break;
+    }
+    char fname[512]= {0};
+    uint len=strlen(active_mi->get_master_log_name());
+    strncpy(fname, active_mi->get_master_log_name(), len+1);
+    fname[len]= 0;
+    if (delegate_io_thread)
+     delegate_io_thread->reply_master_sync_point(&thd->net,fname, active_mi->get_master_log_pos());
+
     my_ok(thd);
     break;
   }
+  case COM_VSR_QUERY_XIDS:
+  {
+    if (check_global_access(thd, REPL_SLAVE_ACL))
+    {
+      break;
+    }
+    if (!active_mi->get_master_log_name()[0])
+    {
+      /*@raolh
+       actually it should report a error.
+      */
+      my_error(ER_SLAVE_NOT_INITIED, MYF(0));
+      break;
+    }
+    ulonglong fpos= uint8korr(packet);
+    ulong len= uint4korr(packet + 8);
+    char fname[512]= {0};
+    strncpy(fname, packet + 12, len);
+
+    if (delegate_io_thread)
+    {
+      int res= delegate_io_thread->reply_xids_after_sync_point(&thd->net, fname, fpos);
+      if (-2 == res)
+      {
+        my_error(ER_TARGET_RELAYLOG_PURGED, MYF(0), fname);
+        break;
+      }
+    }
+
+    my_ok(thd);
+    break;
+  }
+#endif
   case COM_REFRESH:
   {
     int not_used;
