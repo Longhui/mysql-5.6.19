@@ -2217,6 +2217,9 @@ public:
   }
   //Flashback
   Log_event_type get_type_code() { return flashback_event ? FLASHBACK_EVENT: QUERY_EVENT; }
+  //static int dummy_event(String *packet, ulong ev_offset);
+  static int dummy_event(char *buff, ulong ev_len);
+
 #ifdef MYSQL_SERVER
   bool write(IO_CACHE* file);
   virtual bool write_post_header_for_derived(IO_CACHE* file) { return FALSE; }

@@ -4856,6 +4856,9 @@ int MYSQL_BIN_LOG::new_file_without_locking(Format_description_log_event *extra_
 }
 
 
+#ifdef HAVE_REPLICATION
+extern Master_info *active_mi;
+#endif
 /**
   Start writing to a new log file or reopen the old file.
 
@@ -5013,6 +5016,13 @@ int MYSQL_BIN_LOG::new_file_impl(bool need_lock_log, Format_description_log_even
                     error, my_strerror(errbuf, sizeof(errbuf), error));
     close_on_error= TRUE;
   }
+ 
+#ifdef HAVE_REPLICATION
+  if (!error && is_relay_log)
+  {
+    append_rotate_event(active_mi);
+  }
+#endif
   my_free(old_name);
 
 end:
@@ -5047,8 +5057,15 @@ end:
   DBUG_RETURN(error);
 }
 
-
 #ifdef HAVE_REPLICATION
+bool MYSQL_BIN_LOG::append_rotate_event(Master_info* mi)
+{
+   Rotate_log_event rev(mi->get_master_log_name(),0,mi->get_master_log_pos(),0);
+   //rev.server_id= mi->master_id;
+   rev.write(get_log_file());
+   return 0;
+}
+
 /**
   Called after an event has been written to the relay log by the IO
   thread.  This flushes and possibly syncs the file (according to the

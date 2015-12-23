@@ -6274,6 +6274,8 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   Relay_log_info *rli= mi->rli;
   mysql_mutex_t *log_lock= rli->relay_log.get_log_lock();
   ulong s_id;
+  int use_dummy_event= 0;
+  char buff1[256] = {0};
   bool unlock_data_lock= TRUE;
   /*
     FD_q must have been prepared for the first R_a event
@@ -6633,6 +6635,27 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   break;
   }
 
+ /*
+  @raolh 
+  replace unrecognized event with dummy event.
+  InnoSQL 5.5's checkpoint evetn type is 28, should also be skiped.
+  In MySQL 5.6 Ignore event type is 28, which can be skiped safely.
+ */
+  if (28 == event_type || event_type > ENUM_END_EVENT){
+    if (256 > event_len)
+      memcpy(buff1, buf, event_len);
+
+    if (256 < event_len || Query_log_event::dummy_event(buff1, event_len))
+    {
+      sql_print_error("IO Thread Failed to replace event(type:%d, len:%ld) with dummy event.", 
+                        event_type, event_len);
+    } else {
+      sql_print_information("IO Thread replace event(type:%d, len:%ld) with dummy event.",
+                      event_type, event_len);
+      use_dummy_event = 1;
+    }
+  } 
+
   /*
      If this event is originating from this server, don't queue it.
      We don't check this for 3.23 events because it's simpler like this; 3.23
@@ -6704,9 +6727,10 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   else
   {
     /* write the event to the relay log */
-    if (likely(rli->relay_log.append_buffer(buf, event_len, mi) == 0))
+    mi->set_master_log_pos(mi->get_master_log_pos() + inc_pos);
+    if (likely(rli->relay_log.append_buffer((const char*)(use_dummy_event? buff1 : buf), event_len, mi) == 0))
+    //if (likely(rli->relay_log.append_buffer(buf, event_len, mi) == 0))
     {
-      mi->set_master_log_pos(mi->get_master_log_pos() + inc_pos);
       DBUG_PRINT("info", ("master_log_pos: %lu", (ulong) mi->get_master_log_pos()));
       rli->relay_log.harvest_bytes_written(&rli->log_space_total);
 
@@ -6723,6 +6747,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
     }
     else
     {
+      mi->set_master_log_pos(mi->get_master_log_pos() - inc_pos);
       error= ER_SLAVE_RELAY_LOG_WRITE_FAILURE;
     }
     rli->ign_master_log_name_end[0]= 0; // last event is not ignored
