@@ -383,6 +383,7 @@ bool Rpl_info_table_access::load_info_values(uint max_num_field, Field **fields,
   String str(buff, sizeof(buff), &my_charset_bin);
 
   uint field_idx= 0;
+
   while (field_idx < max_num_field)
   {
     fields[field_idx]->val_str(&str);

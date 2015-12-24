@@ -81,7 +81,6 @@ int Rpl_info_table::do_init_info(enum_find_method method, uint instance)
   DBUG_ENTER("Rlp_info_table::do_init_info");
 
   THD *thd= access->create_thd();
-
   saved_mode= thd->variables.sql_mode;
   tmp_disable_binlog(thd);
 

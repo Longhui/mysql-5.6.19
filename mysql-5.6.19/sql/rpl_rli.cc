@@ -1822,6 +1822,7 @@ a file name for --relay-log-index option.", opt_relaylog_index_name);
     goto err;
   }
 
+
   if (check_return == REPOSITORY_DOES_NOT_EXIST)
   {
     /* Init relay log with first entry in the relay index file */

@@ -695,12 +695,6 @@ ALTER TABLE slave_worker_info STATS_PERSISTENT=0;
 
 SET @old_table=(select count(*) from information_schema.columns WHERE TABLE_SCHEMA='mysql' and TABLE_NAME='slave_relay_log_info' and COLUMN_NAME='key_id');
 
-set @cmd="alter table slave_relay_log_info drop column `key_id`;";
-SET @str=IF(@old_table=1,@cmd,"SET @dummy = 0");
-PREPARE stmt FROM @str;
-EXECUTE stmt;
-DROP PREPARE stmt;
-
 set @cmd="alter table slave_relay_log_info add column `Sql_delay` int(11) NOT NULL DEFAULT 0;";
 SET @str=IF(@old_table=1,@cmd,"SET @dummy = 0");
 PREPARE stmt FROM @str;
@@ -713,13 +707,13 @@ PREPARE stmt FROM @str;
 EXECUTE stmt;
 DROP PREPARE stmt;
 
-set @cmd="alter table slave_relay_log_info add column `Id` int(10) unsigned NOT NULL DEFAULT 0;";
+set @cmd="alter table slave_relay_log_info change column `key_id` `Id` INT NOT NULL AFTER `Number_of_workers`;";
 SET @str=IF(@old_table=1,@cmd,"SET @dummy = 0");
 PREPARE stmt FROM @str;
 EXECUTE stmt;
 DROP PREPARE stmt;
 
-set @cmd="update slave_relay_log_info set Number_of_lines=7, Id=1;";
+set @cmd="update slave_relay_log_info set Number_of_lines=7;";
 SET @str=IF(@old_table=1,@cmd,"SET @dummy = 0");
 PREPARE stmt FROM @str;
 EXECUTE stmt;

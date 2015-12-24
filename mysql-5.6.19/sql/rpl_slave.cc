@@ -6650,8 +6650,6 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
       sql_print_error("IO Thread Failed to replace event(type:%d, len:%ld) with dummy event.", 
                         event_type, event_len);
     } else {
-      sql_print_information("IO Thread replace event(type:%d, len:%ld) with dummy event.",
-                      event_type, event_len);
       use_dummy_event = 1;
     }
   } 
