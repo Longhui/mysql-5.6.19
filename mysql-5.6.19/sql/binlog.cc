@@ -3295,6 +3295,16 @@ bool MYSQL_BIN_LOG::open_binlog(const char *log_name,
   if (s.write(&log_file))
     goto err;
   bytes_written+= s.data_written;
+
+#ifdef HAVE_REPLICATION
+/*@raolh
+forcely add a artificial rotate at begin of relay log.
+*/
+  if (is_relay_log)
+  {
+    append_rotate_event(active_mi, s.checksum_alg);
+  }
+#endif
   /*
     We need to revisit this code and improve it.
     See further comments in the mysqld.
@@ -3345,6 +3355,7 @@ bool MYSQL_BIN_LOG::open_binlog(const char *log_name,
       goto err;
     bytes_written+= extra_description_event->data_written;
   }
+
   if (flush_io_cache(&log_file) ||
       mysql_file_sync(log_file.file, MYF(MY_WME)))
     goto err;
@@ -5016,13 +5027,14 @@ int MYSQL_BIN_LOG::new_file_impl(bool need_lock_log, Format_description_log_even
                     error, my_strerror(errbuf, sizeof(errbuf), error));
     close_on_error= TRUE;
   }
- 
+/* 
 #ifdef HAVE_REPLICATION
   if (!error && is_relay_log)
   {
     append_rotate_event(active_mi);
   }
 #endif
+*/
   my_free(old_name);
 
 end:
@@ -5058,11 +5070,17 @@ end:
 }
 
 #ifdef HAVE_REPLICATION
-bool MYSQL_BIN_LOG::append_rotate_event(Master_info* mi)
+bool MYSQL_BIN_LOG::append_rotate_event(Master_info* mi, uint8 checksum_alg)
 {
-   Rotate_log_event rev(mi->get_master_log_name(),0,mi->get_master_log_pos(),0);
-   //rev.server_id= mi->master_id;
-   rev.write(get_log_file());
+  if(mi->get_master_log_name())
+  {
+    Rotate_log_event rev(mi->get_master_log_name(), 0, mi->get_master_log_pos(), 0);
+    rev.set_relay_log_event();
+    rev.set_artificial_event();
+    rev.checksum_alg= checksum_alg;
+    //rev.server_id= mi->master_id;
+    rev.write(get_log_file());
+  }
    return 0;
 }
 
@@ -7054,8 +7072,6 @@ int MYSQL_BIN_LOG::ordered_commit(THD *thd, bool all, bool skip_commit)
   my_off_t flush_end_pos= 0;
   if (flush_error == 0 && total_bytes > 0)
     flush_error= flush_cache_to_file(&flush_end_pos);
-
-//fprintf(stderr, "leader: %x flush binlog\n", thd);
 
   /*
     If the flush finished successfully, we can call the after_flush

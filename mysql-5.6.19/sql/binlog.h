@@ -656,7 +656,7 @@ public:
   void stop_union_events(THD *thd);
   bool is_query_in_union(THD *thd, query_id_t query_id_param);
 
-  bool append_rotate_event(Master_info* mi);
+  bool append_rotate_event(Master_info* mi, uint8);
 #ifdef HAVE_REPLICATION
   bool append_buffer(const char* buf, uint len, Master_info *mi);
   bool append_event(Log_event* ev, Master_info *mi);
